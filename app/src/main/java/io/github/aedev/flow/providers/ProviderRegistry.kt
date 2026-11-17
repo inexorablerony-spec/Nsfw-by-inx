@@ -1,10 +1,17 @@
 package io.github.aedev.flow.providers
 
+import android.content.Context
+
 object ProviderRegistry {
     private val providers = mutableListOf<Provider>()
+    private var context: Context? = null
     
-    init {
-        register(EpornerProvider())
+    fun init(ctx: Context) {
+        context = ctx
+        if (providers.isEmpty()) {
+            register(EpornerProvider())
+            register(WebViewProvider(ctx))
+        }
     }
     
     fun register(provider: Provider) {
