@@ -5,11 +5,19 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import io.github.aedev.flow.network.WarpManager
 
 @Composable
 fun WarpModeScreen() {
-    var warpEnabled by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var warpEnabled by remember { mutableStateOf(WarpManager.isWarpEnabled()) }
+    
+    LaunchedEffect(Unit) {
+        WarpManager.init(context)
+        warpEnabled = WarpManager.isWarpEnabled()
+    }
     
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
@@ -40,7 +48,10 @@ fun WarpModeScreen() {
                 }
                 Switch(
                     checked = warpEnabled,
-                    onCheckedChange = { warpEnabled = it }
+                    onCheckedChange = { enabled ->
+                        warpEnabled = enabled
+                        WarpManager.setWarpEnabled(enabled)
+                    }
                 )
             }
         }
