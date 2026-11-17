@@ -3,6 +3,10 @@ package io.github.aedev.flow.providers
 object ProviderRegistry {
     private val providers = mutableListOf<Provider>()
     
+    init {
+        register(EpornerProvider())
+    }
+    
     fun register(provider: Provider) {
         providers.add(provider)
     }
