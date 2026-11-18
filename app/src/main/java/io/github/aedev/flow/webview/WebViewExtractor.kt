@@ -1,11 +1,14 @@
 package io.github.aedev.flow.webview
 
 import android.annotation.SuppressLint
+import android.os.Looper
 import android.os.SystemClock
 import android.webkit.*
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONTokener
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 
 data class MediaCandidate(
@@ -38,6 +41,8 @@ class WebViewExtractor(private val context: android.content.Context) {
         private const val POLL_INTERVAL_MS = 500L
     }
     
+    private val sessionCounter = AtomicLong(0)
+    
     @SuppressLint("SetJavaScriptEnabled")
     suspend fun extractMedia(url: String): ExtractionResult = withContext(Dispatchers.Main) {
         try {
@@ -55,24 +60,22 @@ class WebViewExtractor(private val context: android.content.Context) {
     
     @SuppressLint("SetJavaScriptEnabled")
     private suspend fun extractMediaInternal(url: String): ExtractionResult = suspendCancellableCoroutine { continuation ->
-        var completed = false
+        val completed = AtomicBoolean(false)
+        val session = sessionCounter.incrementAndGet()
         val webView = WebView(context)
-        val candidates = mutableSetOf<MediaCandidate>()
+        val candidates = mutableMapOf<String, MediaCandidate>()
         
         fun complete(result: ExtractionResult) {
-            if (!completed) {
-                completed = true
-                webView.evaluateJavascript("window.__flowExtractorCleanup && window.__flowExtractorCleanup()", null)
-                webView.destroy()
+            if (!completed.compareAndSet(false, true)) return
+            destroyWebViewSafely(webView)
+            if (continuation.isActive) {
                 continuation.resume(result)
             }
         }
         
         continuation.invokeOnCancellation {
-            if (!completed) {
-                completed = true
-                webView.evaluateJavascript("window.__flowExtractorCleanup && window.__flowExtractorCleanup()", null)
-                webView.destroy()
+            if (completed.compareAndSet(false, true)) {
+                destroyWebViewSafely(webView)
             }
         }
         
@@ -84,21 +87,44 @@ class WebViewExtractor(private val context: android.content.Context) {
             
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, pageUrl: String?) {
+                    if (!isCurrentSession(session) || completed.get()) return
                     injectObserver(view ?: return)
-                    startObservation(view, url, candidates) { result ->
-                        complete(result)
+                    startObservation(view, url, session, candidates) { result ->
+                        if (isCurrentSession(session)) {
+                            complete(result)
+                        }
                     }
                 }
                 
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-                    if (request?.isForMainFrame == true && !completed) {
-                        complete(ExtractionResult.Error("Page load failed: ${error?.description}", ExtractionResult.ErrorType.PAGE_LOAD_FAILED))
+                    if (request?.isForMainFrame == true && isCurrentSession(session) && !completed.get()) {
+                        complete(ExtractionResult.Error("Page load failed", ExtractionResult.ErrorType.PAGE_LOAD_FAILED))
                     }
                 }
             }
         }
         
         webView.loadUrl(url)
+    }
+    
+    private fun isCurrentSession(session: Long): Boolean = session == sessionCounter.get()
+    
+    private fun destroyWebViewSafely(webView: WebView) {
+        val cleanup = {
+            try {
+                webView.stopLoading()
+                webView.webViewClient = WebViewClient()
+                webView.webChromeClient = null
+                webView.removeAllViews()
+                webView.destroy()
+            } catch (_: Exception) {}
+        }
+        
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            cleanup()
+        } else {
+            webView.post { cleanup() }
+        }
     }
     
     private fun injectObserver(webView: WebView) {
@@ -164,24 +190,34 @@ class WebViewExtractor(private val context: android.content.Context) {
     private fun startObservation(
         webView: WebView,
         sourcePage: String,
-        candidates: MutableSet<MediaCandidate>,
+        session: Long,
+        candidates: MutableMap<String, MediaCandidate>,
         onComplete: (ExtractionResult) -> Unit
     ) {
         val deadline = SystemClock.elapsedRealtime() + OBSERVATION_PERIOD_MS
+        val polling = AtomicBoolean(true)
         
         fun poll() {
+            if (!polling.get() || !isCurrentSession(session)) return
+            
             if (SystemClock.elapsedRealtime() >= deadline) {
-                if (candidates.isNotEmpty()) {
-                    onComplete(ExtractionResult.Success(candidates.toList()))
+                polling.set(false)
+                val result = if (candidates.isNotEmpty()) {
+                    ExtractionResult.Success(candidates.values.toList())
                 } else {
-                    onComplete(ExtractionResult.Error("No media found", ExtractionResult.ErrorType.NO_MEDIA_FOUND))
+                    ExtractionResult.Error("No media found", ExtractionResult.ErrorType.NO_MEDIA_FOUND)
                 }
+                onComplete(result)
                 return
             }
             
             webView.evaluateJavascript("JSON.stringify(window.__flowMediaCandidates || [])") { result ->
+                if (!isCurrentSession(session)) return@evaluateJavascript
+                
                 val newCandidates = parseJsonResult(result, sourcePage)
-                candidates.addAll(newCandidates)
+                newCandidates.forEach { candidate ->
+                    candidates[candidate.url] = candidate
+                }
                 
                 webView.postDelayed({ poll() }, POLL_INTERVAL_MS)
             }
@@ -200,7 +236,7 @@ class WebViewExtractor(private val context: android.content.Context) {
                 val url = obj.optString("url", "")
                 val type = obj.optString("type", "unknown")
                 
-                if (url.isNotBlank() && url.startsWith("http")) {
+                if (isValidMediaUrl(url)) {
                     val cookies = cookieManager.getCookie(url)
                     MediaCandidate(
                         url = url,
@@ -208,7 +244,7 @@ class WebViewExtractor(private val context: android.content.Context) {
                         sourcePage = sourcePage,
                         userAgent = USER_AGENT,
                         referer = sourcePage,
-                        cookies = cookies
+                        cookies = cookies?.takeIf { it.isNotBlank() }
                     )
                 } else null
             } catch (e: Exception) {
@@ -229,6 +265,21 @@ class WebViewExtractor(private val context: android.content.Context) {
             }
         } catch (_: Exception) {
             JSONArray()
+        }
+    }
+    
+    private fun isValidMediaUrl(value: String): Boolean {
+        return try {
+            val uri = android.net.Uri.parse(value)
+            val scheme = uri.scheme?.lowercase()
+            val host = uri.host
+            val path = uri.path?.lowercase().orEmpty()
+            
+            scheme in setOf("http", "https") &&
+                !host.isNullOrBlank() &&
+                (path.endsWith(".mp4") || path.endsWith(".m3u8"))
+        } catch (_: Exception) {
+            false
         }
     }
     
