@@ -166,6 +166,22 @@ class WebViewExtractor(private val context: android.content.Context) {
                             if (source.file) addCandidate(source.file, source.type);
                         });
                     }
+                    document.querySelectorAll("iframe").forEach(function(iframe) {
+                        try {
+                            var src = iframe.src || iframe.getAttribute("src");
+                            if (src && (src.includes(".mp4") || src.includes(".m3u8"))) {
+                                addCandidate(src, "iframe");
+                            }
+                        } catch (_) {}
+                    });
+                    document.querySelectorAll("embed").forEach(function(embed) {
+                        try {
+                            var src = embed.src || embed.getAttribute("src");
+                            if (src && (src.includes(".mp4") || src.includes(".m3u8"))) {
+                                addCandidate(src, "embed");
+                            }
+                        } catch (_) {}
+                    });
                     try {
                         performance.getEntriesByType("resource").forEach(entry => {
                             addCandidate(entry.name, "resource");
