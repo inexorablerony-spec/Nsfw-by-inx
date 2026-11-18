@@ -339,6 +339,48 @@ fun NavGraphBuilder.flowAppGraph(
     }
 
     composable(
+        const val PROVIDER_CATALOGUE_ROUTE = "provider_catalogue"
+    const val PROVIDER_PLAYBACK_ROUTE = "provider_playback/{providerId}/{title}/{link}/{image}"
+    
+    composable(PROVIDER_CATALOGUE_ROUTE) {
+        currentRoute.value = PROVIDER_CATALOGUE_ROUTE
+        UnifiedHomeScreen(
+            onVideoClick = { item ->
+                val encodedTitle = java.net.URLEncoder.encode(item.post.title, "UTF-8")
+                val encodedLink = java.net.URLEncoder.encode(item.post.link, "UTF-8")
+                val encodedImage = java.net.URLEncoder.encode(item.post.image, "UTF-8")
+                navController.navigate("provider_playback/${item.providerId}/$encodedTitle/$encodedLink/$encodedImage")
+            }
+        )
+    }
+    
+    composable(
+        route = PROVIDER_PLAYBACK_ROUTE,
+        arguments = listOf(
+            navArgument("providerId") { type = NavType.StringType },
+            navArgument("title") { type = NavType.StringType },
+            navArgument("link") { type = NavType.StringType },
+            navArgument("image") { type = NavType.StringType }
+        )
+    ) { backStackEntry ->
+        val providerId = backStackEntry.arguments?.getString("providerId") ?: return@composable
+        val title = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("title") ?: "", "UTF-8")
+        val link = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("link") ?: "", "UTF-8")
+        val image = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("image") ?: "", "UTF-8")
+        
+        val item = ProviderCatalogueItem(
+            providerId = providerId,
+            providerName = "",
+            post = Post(title, link, image)
+        )
+        
+        ProviderVideoPlayer(
+            item = item,
+            onBack = { navController.popBackStack() }
+        )
+    }
+    
+    composable(
         route = "settings?target={target}",
         arguments =
             listOf(
