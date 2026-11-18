@@ -3633,16 +3633,45 @@ class EnhancedPlayerManager private constructor() {
         if (p.mediaItemCount == 0 && clearedMediaRecoveryState.pendingFor(videoId) != null) return
         errorHandler?.handleRefocusStuck(p, videoId)
     }
+
+    /**
+     * Plays an external provider stream using the existing player.
+     * Does not create a new ExoPlayer instance.
+     */
+    suspend fun playExternalStream(
+        videoId: String,
+        title: String,
+        url: String,
+        headers: Map<String, String> = emptyMap()
+    ) {
+        if (!isOnMainThread()) {
+            withContext(Dispatchers.Main) {
+                playExternalStream(videoId, title, url, headers)
+            }
+            return
+        }
+        
+        if (player == null) appContext?.let { initialize(it) }
+        
+        resetPlaybackStateForNewVideo(videoId)
+        currentVideoId = videoId
+        
+        val dataSourceFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+            .setUserAgent(headers["User-Agent"] ?: "Mozilla/5.0")
+            .setDefaultRequestProperties(headers.filterKeys { it != "User-Agent" })
+        
+        val mediaSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dataSourceFactory)
+            .createMediaSource(androidx.media3.common.MediaItem.fromUri(url))
+        
+        player?.setMediaSource(mediaSource)
+        player?.prepare()
+        player?.playWhenReady = true
+        
+        _state.value = _state.value.copy(
+            currentVideoId = videoId,
+            title = title,
+            isPlaying = true
+        )
+    }
+
 }
-
-// Backward compatibility type aliases
-typealias EnhancedPlayerState = io.github.aedev.flow.player.state.EnhancedPlayerState
-typealias QualityOption = io.github.aedev.flow.player.state.QualityOption
-typealias AudioTrackOption = io.github.aedev.flow.player.state.AudioTrackOption
-typealias SubtitleOption = io.github.aedev.flow.player.state.SubtitleOption
-
-/**
- * How long a re-attached surface may stay blank before it is treated as stuck rather than slow. A
- * first frame measured on a real device lands around 120 ms.
- */
-private const val SURFACE_FIRST_FRAME_TIMEOUT_MS = 1_200L
