@@ -99,7 +99,18 @@ object WarpProxyManager {
                 return@withContext false
             }
             
-            proc = launchProxy(binary, port)
+            val configDir = File(context.filesDir, "warp")
+            configDir.mkdirs()
+            val configPath = File(configDir, "config.json").absolutePath
+            
+            if (!File(configPath).exists()) {
+                if (!registerAccount(binary, configPath)) {
+                    setErrorIfCurrent(generation, "Registration failed")
+                    return@withContext false
+                }
+            }
+            
+            proc = launchProxy(binary, port, configPath)
             if (proc == null) {
                 setErrorIfCurrent(generation, "Failed to start proxy process")
                 return@withContext false
@@ -326,17 +337,51 @@ object WarpProxyManager {
         return null
     }
     
-    private fun launchProxy(binary: File, port: Int): Process? {
+    private fun launchProxy(binary: File, port: Int, configPath: String): Process? {
         return try {
-            // NOTE: CLI syntax needs to be verified against usque source
-            // Current assumption: "usque http --port PORT"
-            Log.i(TAG, "Launching usque on port $port")
-            ProcessBuilder(binary.absolutePath, "http", "--port", port.toString())
+            // Verified against usque commit 6aa03fc97d12848dce34eedbd187fb1077b5d1ea
+            // Command: usque -c CONFIG http-proxy -b 127.0.0.1 -p PORT
+            Log.i(TAG, "Launching usque http-proxy on port $port")
+            ProcessBuilder(
+                binary.absolutePath,
+                "-c", configPath,
+                "http-proxy",
+                "-b", "127.0.0.1",
+                "-p", port.toString()
+            )
                 .redirectErrorStream(true)
                 .start()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch proxy: ${e.message}")
             null
+        }
+    }
+    
+    private fun registerAccount(binary: File, configPath: String): Boolean {
+        return try {
+            Log.i(TAG, "Registering WARP account")
+            val proc = ProcessBuilder(
+                binary.absolutePath,
+                "-c", configPath,
+                "register",
+                "--accept-tos"
+            )
+                .redirectErrorStream(true)
+                .start()
+            
+            val output = proc.inputStream.bufferedReader().readText()
+            val exitCode = proc.waitFor()
+            
+            if (exitCode == 0 && File(configPath).exists()) {
+                Log.i(TAG, "Registration successful")
+                true
+            } else {
+                Log.e(TAG, "Registration failed: exit=$exitCode")
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Registration error: ${e.message}")
+            false
         }
     }
     
