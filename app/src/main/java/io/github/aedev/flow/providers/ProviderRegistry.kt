@@ -5,8 +5,12 @@ import android.content.SharedPreferences
 import java.util.concurrent.ConcurrentHashMap
 
 object ProviderRegistry {
+    private const val KEY_ENABLED = "enabled"
+    private const val KEY_REGISTERED = "registered"
+    
     private val allProviders = ConcurrentHashMap<String, Provider>()
     private val enabledProviders = ConcurrentHashMap.newKeySet<String>()
+    private val knownProviderIds = ConcurrentHashMap.newKeySet<String>()
     private val registrationOrder = mutableListOf<String>()
     private var prefs: SharedPreferences? = null
     private var initialized = false
@@ -16,39 +20,55 @@ object ProviderRegistry {
         if (initialized) return
         prefs = ctx.getSharedPreferences("providers", Context.MODE_PRIVATE)
         
+        loadPreferences()
+        
         if (allProviders.isEmpty()) {
-            register(EpornerProvider(), isNew = true)
-            register(WebViewProvider(ctx), isNew = true)
+            register(EpornerProvider())
+            register(WebViewProvider(ctx))
         }
         
-        loadEnabledProviders()
         initialized = true
     }
     
-    private fun loadEnabledProviders() {
-        val saved = prefs?.getStringSet("enabled", null)
-        if (saved != null) {
+    private fun loadPreferences() {
+        val savedEnabled = prefs?.getStringSet(KEY_ENABLED, null)
+        val savedRegistered = prefs?.getStringSet(KEY_REGISTERED, null)
+        
+        if (savedEnabled != null) {
             enabledProviders.clear()
-            enabledProviders.addAll(saved)
+            enabledProviders.addAll(savedEnabled)
+        }
+        
+        if (savedRegistered != null) {
+            knownProviderIds.clear()
+            knownProviderIds.addAll(savedRegistered)
+        } else if (savedEnabled != null) {
+            knownProviderIds.addAll(listOf("eporner", "webview"))
         }
     }
     
-    private fun saveEnabledProviders() {
-        val copy = enabledProviders.toSet()
-        prefs?.edit()?.putStringSet("enabled", copy)?.apply()
+    private fun savePreferences() {
+        val enabledCopy = enabledProviders.toSet()
+        val registeredCopy = knownProviderIds.toSet()
+        prefs?.edit()?.apply {
+            putStringSet(KEY_ENABLED, enabledCopy)
+            putStringSet(KEY_REGISTERED, registeredCopy)
+        }?.apply()
     }
     
     @Synchronized
-    fun register(provider: Provider, isNew: Boolean = false) {
+    fun register(provider: Provider) {
         val isFirstRegistration = !allProviders.containsKey(provider.value)
         allProviders[provider.value] = provider
         
         if (isFirstRegistration) {
             registrationOrder.add(provider.value)
-            if (isNew) {
+            
+            if (knownProviderIds.add(provider.value)) {
                 enabledProviders.add(provider.value)
-                saveEnabledProviders()
             }
+            
+            savePreferences()
         }
     }
     
@@ -56,20 +76,25 @@ object ProviderRegistry {
     fun unregister(value: String) {
         allProviders.remove(value)
         enabledProviders.remove(value)
+        knownProviderIds.remove(value)
         registrationOrder.remove(value)
-        saveEnabledProviders()
+        savePreferences()
     }
     
+    @Synchronized
     fun getAll(): List<Provider> = registrationOrder.mapNotNull { allProviders[it] }
     
+    @Synchronized
     fun getEnabled(): List<Provider> = registrationOrder.mapNotNull { 
         allProviders[it]?.takeIf { enabledProviders.contains(it.value) }
     }
     
+    @Synchronized
     fun getAllInfo(): List<ProviderInfo> = registrationOrder.mapNotNull { 
         allProviders[it]?.getInfo(enabledProviders.contains(it))
     }
     
+    @Synchronized
     fun isEnabled(value: String): Boolean = enabledProviders.contains(value)
     
     @Synchronized
@@ -79,10 +104,12 @@ object ProviderRegistry {
         } else {
             enabledProviders.remove(value)
         }
-        saveEnabledProviders()
+        savePreferences()
     }
     
+    @Synchronized
     fun getByValue(value: String): Provider? = allProviders[value]
     
+    @Synchronized
     fun isInitialized(): Boolean = initialized
 }
