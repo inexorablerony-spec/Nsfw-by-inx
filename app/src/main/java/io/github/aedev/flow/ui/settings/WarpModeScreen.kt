@@ -3,38 +3,19 @@ package io.github.aedev.flow.ui.settings
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import io.github.aedev.flow.network.WarpManager
+import io.github.aedev.flow.network.WarpProxyManager
+import kotlinx.coroutines.launch
 
 @Composable
 fun WarpModeScreen() {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var isInstalled by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    var state by remember { mutableStateOf(WarpProxyManager.getState()) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    
-    fun refreshStatus() {
-        isInstalled = WarpManager.isWarpAppInstalled(context)
-    }
-    
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                refreshStatus()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-    
-    LaunchedEffect(Unit) {
-        refreshStatus()
-    }
     
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
@@ -49,45 +30,50 @@ fun WarpModeScreen() {
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Cloudflare WARP",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Text(
-                    text = "Use Cloudflare's official 1.1.1.1 app for WARP",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                if (!isInstalled) {
-                    Text(
-                        text = "The official 1.1.1.1 app is required. Install it and enable WARP inside the app.",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = {
-                        if (!WarpManager.openPlayStore(context)) {
-                            errorMessage = "Could not open Play Store"
-                        }
-                    }) {
-                        Text("Install 1.1.1.1 App")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Cloudflare WARP",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = when (state) {
+                                WarpProxyManager.State.OFF -> "OFF"
+                                WarpProxyManager.State.STARTING -> "STARTING..."
+                                WarpProxyManager.State.CONNECTED -> "CONNECTED"
+                                WarpProxyManager.State.STOPPING -> "STOPPING..."
+                                WarpProxyManager.State.ERROR -> "ERROR"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = when (state) {
+                                WarpProxyManager.State.CONNECTED -> MaterialTheme.colorScheme.primary
+                                WarpProxyManager.State.ERROR -> MaterialTheme.colorScheme.error
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
                     }
-                } else {
-                    Text(
-                        text = "1.1.1.1 app is installed. Open it to enable WARP.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary
+                    Switch(
+                        checked = state == WarpProxyManager.State.CONNECTED,
+                        onCheckedChange = { enabled ->
+                            scope.launch {
+                                if (enabled) {
+                                    val success = WarpProxyManager.start(context)
+                                    state = WarpProxyManager.getState()
+                                    if (!success) {
+                                        errorMessage = WarpProxyManager.getErrorMessage()
+                                    }
+                                } else {
+                                    WarpProxyManager.stop()
+                                    state = WarpProxyManager.getState()
+                                }
+                            }
+                        },
+                        enabled = state != WarpProxyManager.State.STARTING && state != WarpProxyManager.State.STOPPING
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = {
-                        if (!WarpManager.openWarpApp(context)) {
-                            errorMessage = "Could not open 1.1.1.1 app"
-                        }
-                    }) {
-                        Text("Open 1.1.1.1 App")
-                    }
                 }
                 
                 if (errorMessage != null) {
@@ -102,7 +88,7 @@ fun WarpModeScreen() {
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 Text(
-                    text = "Note: Cloudflare does not provide an embeddable SDK. You must install the official 1.1.1.1 app and enable WARP inside it. This app cannot establish a WARP connection directly.",
+                    text = "This is an app-level proxy, not a system VPN. Other apps are not protected. Requires libusque.so native binary.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
