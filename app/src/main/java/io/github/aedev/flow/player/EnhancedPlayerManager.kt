@@ -3639,19 +3639,19 @@ class EnhancedPlayerManager private constructor() {
      * Does not create a new ExoPlayer instance.
      */
     suspend fun playExternalStream(
+        context: android.content.Context,
         videoId: String,
-        title: String,
         url: String,
         headers: Map<String, String> = emptyMap()
     ) {
         if (!isOnMainThread()) {
             withContext(Dispatchers.Main) {
-                playExternalStream(videoId, title, url, headers)
+                playExternalStream(context, videoId, url, headers)
             }
             return
         }
         
-        if (player == null) appContext?.let { initialize(it) }
+        if (player == null) initialize(context.applicationContext)
         
         resetPlaybackStateForNewVideo(videoId)
         currentVideoId = videoId
@@ -3660,16 +3660,15 @@ class EnhancedPlayerManager private constructor() {
             .setUserAgent(headers["User-Agent"] ?: "Mozilla/5.0")
             .setDefaultRequestProperties(headers.filterKeys { it != "User-Agent" })
         
-        val mediaSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dataSourceFactory)
-            .createMediaSource(androidx.media3.common.MediaItem.fromUri(url))
+        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
+        val mediaSource = mediaSourceFactory.createMediaSource(androidx.media3.common.MediaItem.fromUri(url))
         
         player?.setMediaSource(mediaSource)
         player?.prepare()
         player?.playWhenReady = true
         
-        _state.value = _state.value.copy(
+        _playerState.value = _playerState.value.copy(
             currentVideoId = videoId,
-            title = title,
             isPlaying = true
         )
     }
