@@ -79,7 +79,7 @@ fun SettingsNavHost(
         }
         
         composable(SettingsRoute.ProviderManager.route) {
-            ProviderManagerScreen()
+            ProviderManagerScreen(onOpenCatalogue = { /* Navigate to catalogue */ })
         }
         
         composable(SettingsRoute.WarpMode.route) {

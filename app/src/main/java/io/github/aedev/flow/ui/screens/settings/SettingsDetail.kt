@@ -219,7 +219,7 @@ internal fun SettingsDetail(
         }
 
         SettingsDestination.PROVIDER_MANAGER -> {
-            ProviderManagerScreen()
+            ProviderManagerScreen(onOpenCatalogue = { /* Navigate to catalogue */ })
         }
 
         SettingsDestination.WARP_MODE -> {
