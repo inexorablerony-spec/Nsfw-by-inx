@@ -49,6 +49,7 @@ import io.github.aedev.flow.ui.settings.WarpModeScreen
  */
 @Composable
 internal fun SettingsDetail(
+    onOpenProviderCatalogue: () -> Unit = {},
     target: SettingsTarget,
     onBack: (() -> Unit)?,
     onNavigate: (SettingsTarget) -> Unit,
@@ -219,7 +220,7 @@ internal fun SettingsDetail(
         }
 
         SettingsDestination.PROVIDER_MANAGER -> {
-            ProviderManagerScreen(onOpenCatalogue = { /* Navigate to catalogue */ })
+            ProviderManagerScreen(onOpenCatalogue = onOpenProviderCatalogue)
         }
 
         SettingsDestination.WARP_MODE -> {
