@@ -150,6 +150,8 @@ class FlowApplication :
         YouTube.cacheDirectory = cacheDir.resolve("innertube_http_cache")
 
         DiscordPresenceRuntime.initialize(this, okHttpClient)
+        
+        ProviderRegistry.init(this)
 
         val playerPreferences = PlayerPreferences(this)
 
