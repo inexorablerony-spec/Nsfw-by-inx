@@ -77,11 +77,19 @@ fun UnifiedHomeScreen(
         }
         
         if (errors.isNotEmpty() && items.isNotEmpty()) {
-            Text(
-                text = "Some providers failed: ${errors.size}",
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(8.dp)
-            )
+            Column(modifier = Modifier.padding(8.dp)) {
+                Text(
+                    text = "Some providers failed (${errors.size})",
+                    color = MaterialTheme.colorScheme.error
+                )
+                errors.forEach { error ->
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+                }
+            }
         }
     }
 }
