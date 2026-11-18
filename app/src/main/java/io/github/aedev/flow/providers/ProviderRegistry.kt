@@ -2,7 +2,14 @@ package io.github.aedev.flow.providers
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.ConcurrentHashMap
+
+data class ProviderRegistryState(
+    val providers: List<ProviderInfo> = emptyList()
+)
 
 object ProviderRegistry {
     private const val KEY_ENABLED = "enabled"
@@ -14,6 +21,9 @@ object ProviderRegistry {
     private val registrationOrder = mutableListOf<String>()
     private var prefs: SharedPreferences? = null
     private var initialized = false
+    
+    private val _state = MutableStateFlow(ProviderRegistryState())
+    val state: StateFlow<ProviderRegistryState> = _state.asStateFlow()
     
     @Synchronized
     fun init(ctx: Context) {
@@ -27,6 +37,7 @@ object ProviderRegistry {
             register(WebViewProvider(ctx))
         }
         
+        updateState()
         initialized = true
     }
     
@@ -56,6 +67,13 @@ object ProviderRegistry {
         }?.apply()
     }
     
+    private fun updateState() {
+        val providers = registrationOrder.mapNotNull { 
+            allProviders[it]?.getInfo(enabledProviders.contains(it))
+        }
+        _state.value = ProviderRegistryState(providers)
+    }
+    
     @Synchronized
     fun register(provider: Provider) {
         val isFirstRegistration = !allProviders.containsKey(provider.value)
@@ -69,6 +87,7 @@ object ProviderRegistry {
             }
             
             savePreferences()
+            updateState()
         }
     }
     
@@ -79,6 +98,7 @@ object ProviderRegistry {
         knownProviderIds.remove(value)
         registrationOrder.remove(value)
         savePreferences()
+        updateState()
     }
     
     @Synchronized
@@ -105,6 +125,7 @@ object ProviderRegistry {
             enabledProviders.remove(value)
         }
         savePreferences()
+        updateState()
     }
     
     @Synchronized
