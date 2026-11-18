@@ -64,7 +64,12 @@ import io.github.aedev.flow.providers.Post
 import kotlinx.coroutines.flow.first
 
 const val PROVIDER_CATALOGUE_ROUTE = "provider_catalogue"
-const val PROVIDER_PLAYBACK_ROUTE = "provider_playback/{providerId}/{providerName}/{title}/{link}/{image}"
+const val PROVIDER_PLAYBACK_ROUTE = "provider_playback"
+private const val KEY_PROVIDER_ID = "provider_playback_provider_id"
+private const val KEY_PROVIDER_NAME = "provider_playback_provider_name"
+private const val KEY_VIDEO_TITLE = "provider_playback_title"
+private const val KEY_VIDEO_LINK = "provider_playback_link"
+private const val KEY_VIDEO_IMAGE = "provider_playback_image"
 
 @UnstableApi
 fun NavGraphBuilder.flowAppGraph(
@@ -345,41 +350,42 @@ fun NavGraphBuilder.flowAppGraph(
         currentRoute.value = PROVIDER_CATALOGUE_ROUTE
         UnifiedHomeScreen(
             onVideoClick = { item ->
-                val encodedTitle = java.net.URLEncoder.encode(item.post.title, "UTF-8")
-                val encodedLink = java.net.URLEncoder.encode(item.post.link, "UTF-8")
-                val encodedImage = java.net.URLEncoder.encode(item.post.image, "UTF-8")
-                val encodedName = java.net.URLEncoder.encode(item.providerName, "UTF-8")
-                navController.navigate("provider_playback/${item.providerId}/$encodedName/$encodedTitle/$encodedLink/$encodedImage")
+                val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+                if (savedStateHandle != null) {
+                    savedStateHandle[KEY_PROVIDER_ID] = item.providerId
+                    savedStateHandle[KEY_PROVIDER_NAME] = item.providerName
+                    savedStateHandle[KEY_VIDEO_TITLE] = item.post.title
+                    savedStateHandle[KEY_VIDEO_LINK] = item.post.link
+                    savedStateHandle[KEY_VIDEO_IMAGE] = item.post.image
+                    navController.navigate(PROVIDER_PLAYBACK_ROUTE)
+                }
             }
         )
     }
     
-    composable(
-        route = PROVIDER_PLAYBACK_ROUTE,
-        arguments = listOf(
-            navArgument("providerId") { type = NavType.StringType },
-            navArgument("providerName") { type = NavType.StringType },
-            navArgument("title") { type = NavType.StringType },
-            navArgument("link") { type = NavType.StringType },
-            navArgument("image") { type = NavType.StringType }
-        )
-    ) { backStackEntry ->
-        val providerId = backStackEntry.arguments?.getString("providerId") ?: return@composable
-        val providerName = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("providerName") ?: "", "UTF-8")
-        val title = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("title") ?: "", "UTF-8")
-        val link = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("link") ?: "", "UTF-8")
-        val image = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("image") ?: "", "UTF-8")
-        
-        val item = ProviderCatalogueItem(
-            providerId = providerId,
-            providerName = providerName,
-            post = Post(title, link, image)
-        )
-        
-        ProviderVideoPlayer(
-            item = item,
-            onBack = { navController.popBackStack() }
-        )
+    composable(PROVIDER_PLAYBACK_ROUTE) {
+        val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
+        val providerId = savedStateHandle?.get<String>(KEY_PROVIDER_ID)
+        val providerName = savedStateHandle?.get<String>(KEY_PROVIDER_NAME)
+        val title = savedStateHandle?.get<String>(KEY_VIDEO_TITLE)
+        val link = savedStateHandle?.get<String>(KEY_VIDEO_LINK)
+        val image = savedStateHandle?.get<String>(KEY_VIDEO_IMAGE)
+
+        if (providerId == null || providerName == null || title == null || link == null) {
+            LaunchedEffect(Unit) {
+                navController.popBackStack()
+            }
+        } else {
+            val item = ProviderCatalogueItem(
+                providerId = providerId,
+                providerName = providerName,
+                post = Post(title = title, link = link, image = image.orEmpty())
+            )
+            ProviderVideoPlayer(
+                item = item,
+                onBack = { navController.popBackStack() }
+            )
+        }
     }
     
     composable(
