@@ -5,7 +5,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import io.github.aedev.flow.data.model.Video
 import io.github.aedev.flow.player.EnhancedPlayerManager
+import io.github.aedev.flow.player.GlobalPlayerState
+import io.github.aedev.flow.player.MiniPlayerExpansionState
 import io.github.aedev.flow.providers.Provider
 import kotlinx.coroutines.CancellationException
 
@@ -28,6 +31,22 @@ fun ProviderVideoPlayer(
             val streams = provider.getStream(videoLink)
             if (streams.isNotEmpty()) {
                 val stream = streams.first()
+                
+                val video = Video(
+                    id = videoLink,
+                    title = "Provider Video",
+                    channelName = provider.name,
+                    channelId = provider.value,
+                    thumbnailUrl = "",
+                    duration = 0,
+                    viewCount = 0,
+                    uploadDate = ""
+                )
+                
+                GlobalPlayerState.setCurrentVideo(video)
+                GlobalPlayerState.setMiniPlayerExpansionState(MiniPlayerExpansionState.EXPANDED)
+                GlobalPlayerState.showMiniPlayer()
+                
                 playerManager.playExternalStream(
                     context = context,
                     videoId = videoLink,
@@ -50,8 +69,6 @@ fun ProviderVideoPlayer(
             CircularProgressIndicator()
         } else if (error != null) {
             Text("Error: $error")
-        } else {
-            Text("Playing in Flow player")
         }
     }
 }
