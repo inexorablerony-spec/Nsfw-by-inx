@@ -43,16 +43,15 @@ fun ProviderVideoPlayer(
                     uploadDate = ""
                 )
                 
-                GlobalPlayerState.setCurrentVideo(video)
-                GlobalPlayerState.setMiniPlayerExpansionState(MiniPlayerExpansionState.EXPANDED)
-                GlobalPlayerState.showMiniPlayer()
-                
                 playerManager.playExternalStream(
                     context = context,
                     videoId = videoLink,
                     url = stream.link,
                     headers = stream.headers
                 )
+                
+                GlobalPlayerState.setCurrentVideo(video)
+                GlobalPlayerState.expandMiniPlayer()
             } else {
                 error = "No streams found"
             }
