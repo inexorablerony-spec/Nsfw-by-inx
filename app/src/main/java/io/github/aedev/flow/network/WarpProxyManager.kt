@@ -131,12 +131,19 @@ object WarpProxyManager {
             }
             
             if (!verifyConnection(port, proc)) {
+                clearProcessIfCurrent(proc, generation)
                 cleanupProcess(proc)
                 setErrorIfCurrent(generation, "Connection verification failed")
                 return@withContext false
             }
             
             // Check if cancelled before setting CONNECTED
+            if (!isActive) {
+                clearProcessIfCurrent(proc, generation)
+                cleanupProcess(proc)
+                return@withContext false
+            }
+            
             val connected = synchronized(lock) {
                 if (startupGeneration.get() == generation && _state.value == State.STARTING) {
                     _state.value = State.CONNECTED
@@ -227,6 +234,17 @@ object WarpProxyManager {
                 _state.value = State.ERROR
                 _errorMessage.value = message
                 Log.e(TAG, message)
+            }
+        }
+    }
+    
+    private fun clearProcessIfCurrent(proc: Process, generation: Long) {
+        synchronized(lock) {
+            if (warpProcess == proc && startupGeneration.get() == generation) {
+                warpProcess = null
+                currentPort = null
+                outputJob?.cancel()
+                outputJob = null
             }
         }
     }
