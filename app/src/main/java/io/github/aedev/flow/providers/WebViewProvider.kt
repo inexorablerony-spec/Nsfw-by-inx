@@ -1,6 +1,7 @@
 package io.github.aedev.flow.providers
 
 import android.content.Context
+import io.github.aedev.flow.webview.ExtractionResult
 import io.github.aedev.flow.webview.WebViewExtractor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,18 +24,21 @@ class WebViewProvider(private val context: Context) : Provider {
     }
     
     override suspend fun getStream(link: String): List<Stream> = withContext(Dispatchers.IO) {
-        try {
-            val streams = extractor.extractStreams(link)
-            streams.map { url ->
-                Stream(
-                    server = "WebView",
-                    link = url,
-                    type = if (url.contains(".m3u8")) "m3u8" else "mp4",
-                    headers = mapOf("User-Agent" to "Mozilla/5.0")
-                )
+        when (val result = extractor.extractMedia(link)) {
+            is ExtractionResult.Success -> {
+                result.candidates.map { candidate ->
+                    Stream(
+                        server = "WebView",
+                        link = candidate.url,
+                        type = candidate.type,
+                        headers = mapOf(
+                            "User-Agent" to candidate.userAgent,
+                            "Referer" to candidate.referer
+                        )
+                    )
+                }
             }
-        } catch (e: Exception) {
-            emptyList()
+            is ExtractionResult.Error -> emptyList()
         }
     }
 }
