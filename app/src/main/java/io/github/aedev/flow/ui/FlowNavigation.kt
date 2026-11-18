@@ -63,6 +63,9 @@ import io.github.aedev.flow.providers.ProviderCatalogueItem
 import io.github.aedev.flow.providers.Post
 import kotlinx.coroutines.flow.first
 
+const val PROVIDER_CATALOGUE_ROUTE = "provider_catalogue"
+const val PROVIDER_PLAYBACK_ROUTE = "provider_playback/{providerId}/{providerName}/{title}/{link}/{image}"
+
 @UnstableApi
 fun NavGraphBuilder.flowAppGraph(
     navController: NavHostController,
@@ -339,9 +342,6 @@ fun NavGraphBuilder.flowAppGraph(
     }
 
     composable(
-        const val PROVIDER_CATALOGUE_ROUTE = "provider_catalogue"
-    const val PROVIDER_PLAYBACK_ROUTE = "provider_playback/{providerId}/{title}/{link}/{image}"
-    
     composable(PROVIDER_CATALOGUE_ROUTE) {
         currentRoute.value = PROVIDER_CATALOGUE_ROUTE
         UnifiedHomeScreen(
@@ -349,7 +349,8 @@ fun NavGraphBuilder.flowAppGraph(
                 val encodedTitle = java.net.URLEncoder.encode(item.post.title, "UTF-8")
                 val encodedLink = java.net.URLEncoder.encode(item.post.link, "UTF-8")
                 val encodedImage = java.net.URLEncoder.encode(item.post.image, "UTF-8")
-                navController.navigate("provider_playback/${item.providerId}/$encodedTitle/$encodedLink/$encodedImage")
+                val encodedName = java.net.URLEncoder.encode(item.providerName, "UTF-8")
+                navController.navigate("provider_playback/${item.providerId}/$encodedName/$encodedTitle/$encodedLink/$encodedImage")
             }
         )
     }
@@ -358,19 +359,21 @@ fun NavGraphBuilder.flowAppGraph(
         route = PROVIDER_PLAYBACK_ROUTE,
         arguments = listOf(
             navArgument("providerId") { type = NavType.StringType },
+            navArgument("providerName") { type = NavType.StringType },
             navArgument("title") { type = NavType.StringType },
             navArgument("link") { type = NavType.StringType },
             navArgument("image") { type = NavType.StringType }
         )
     ) { backStackEntry ->
         val providerId = backStackEntry.arguments?.getString("providerId") ?: return@composable
+        val providerName = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("providerName") ?: "", "UTF-8")
         val title = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("title") ?: "", "UTF-8")
         val link = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("link") ?: "", "UTF-8")
         val image = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("image") ?: "", "UTF-8")
         
         val item = ProviderCatalogueItem(
             providerId = providerId,
-            providerName = "",
+            providerName = providerName,
             post = Post(title, link, image)
         )
         
