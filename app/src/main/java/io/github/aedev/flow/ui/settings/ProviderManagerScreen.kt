@@ -12,7 +12,9 @@ import io.github.aedev.flow.providers.Provider
 import io.github.aedev.flow.providers.ProviderRegistry
 
 @Composable
-fun ProviderManagerScreen() {
+fun ProviderManagerScreen(
+    onOpenCatalogue: () -> Unit = {}
+) {
     val providers = remember { ProviderRegistry.getAll() }
     var enabledMap by remember { mutableStateOf(providers.associate { it.value to ProviderRegistry.isEnabled(it.value) }) }
     
@@ -31,7 +33,7 @@ fun ProviderManagerScreen() {
         )
         
         Button(
-            onClick = { /* Navigate to provider_catalogue */ },
+            onClick = onOpenCatalogue,
             modifier = Modifier.padding(16.dp)
         ) {
             Text("Open Provider Catalogue")
