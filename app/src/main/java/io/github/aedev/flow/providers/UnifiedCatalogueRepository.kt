@@ -1,5 +1,6 @@
 package io.github.aedev.flow.providers
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -14,8 +15,10 @@ class UnifiedCatalogueRepository {
                 results.addAll(posts.map { 
                     ProviderCatalogueItem(provider.value, provider.name, it)
                 })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                errors.add("${provider.name}: ${e.message}")
+                errors.add("${provider.name}: ${e.message ?: "Unknown error"}")
             }
         }
         
@@ -32,8 +35,10 @@ class UnifiedCatalogueRepository {
                 results.addAll(posts.map { 
                     ProviderCatalogueItem(provider.value, provider.name, it)
                 })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                errors.add("${provider.name}: ${e.message}")
+                errors.add("${provider.name}: ${e.message ?: "Unknown error"}")
             }
         }
         

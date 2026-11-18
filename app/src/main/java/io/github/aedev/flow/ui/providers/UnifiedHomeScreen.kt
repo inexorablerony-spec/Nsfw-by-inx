@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import io.github.aedev.flow.providers.ProviderCatalogueItem
 import io.github.aedev.flow.providers.UnifiedCatalogueRepository
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 @Composable
 fun UnifiedHomeScreen(
@@ -21,16 +21,22 @@ fun UnifiedHomeScreen(
     var items by remember { mutableStateOf<List<ProviderCatalogueItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errors by remember { mutableStateOf<List<String>>(emptyList()) }
+    var catalogueError by remember { mutableStateOf<String?>(null) }
     val repository = remember { UnifiedCatalogueRepository() }
-    val scope = rememberCoroutineScope()
     
     LaunchedEffect(Unit) {
-        scope.launch {
+        isLoading = true
+        catalogueError = null
+        try {
             val result = repository.getHomeFeed()
             items = result.items
             errors = result.errors
-            isLoading = false
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            catalogueError = e.message ?: "Failed to load catalogue"
         }
+        isLoading = false
     }
     
     Column(modifier = Modifier.fillMaxSize()) {
@@ -40,25 +46,39 @@ fun UnifiedHomeScreen(
             modifier = Modifier.padding(16.dp)
         )
         
-        if (isLoading) {
-            CircularProgressIndicator(modifier = Modifier.padding(16.dp))
-        } else if (items.isEmpty()) {
-            Text("No videos found", modifier = Modifier.padding(16.dp))
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(8.dp)
-            ) {
-                items(items) { item ->
-                    VideoCard(item = item, onClick = { onVideoClick(item) })
+        when {
+            isLoading -> {
+                CircularProgressIndicator(modifier = Modifier.padding(16.dp))
+                Text("Loading...", modifier = Modifier.padding(16.dp))
+            }
+            catalogueError != null -> {
+                Text("Error: $catalogueError", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
+            }
+            items.isEmpty() && errors.isEmpty() -> {
+                Text("No videos found", modifier = Modifier.padding(16.dp))
+            }
+            items.isEmpty() && errors.isNotEmpty() -> {
+                Text("All providers failed", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
+                errors.forEach { error ->
+                    Text(error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                }
+            }
+            else -> {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(8.dp)
+                ) {
+                    items(items) { item ->
+                        VideoCard(item = item, onClick = { onVideoClick(item) })
+                    }
                 }
             }
         }
         
-        if (errors.isNotEmpty()) {
+        if (errors.isNotEmpty() && items.isNotEmpty()) {
             Text(
-                text = "Some providers failed",
+                text = "Some providers failed: ${errors.size}",
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(8.dp)
             )
