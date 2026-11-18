@@ -48,10 +48,16 @@ class EpornerProvider : Provider {
     override suspend fun getStream(link: String): List<Stream> = withContext(Dispatchers.IO) {
         try {
             if (link.contains(".mp4")) {
-                listOf(Stream("Eporner", link, "mp4", mapOf("User-Agent" to userAgent, "Referer" to baseUrl)))
-            } else {
-                emptyList()
+                return@withContext listOf(Stream("Eporner", link, "mp4", mapOf("User-Agent" to userAgent, "Referer" to baseUrl)))
             }
+            
+            val html = URL(link).readText()
+            val mp4Regex = Regex("""https?://[^"'\s]+\.mp4[^"'\s]*""")
+            val streams = mp4Regex.findAll(html).map { match ->
+                Stream("Eporner", match.value, "mp4", mapOf("User-Agent" to userAgent, "Referer" to baseUrl))
+            }.distinctBy { it.link }.toList()
+            
+            streams
         } catch (e: Exception) {
             emptyList()
         }
