@@ -6,6 +6,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import io.github.aedev.flow.providers.Post
 import io.github.aedev.flow.providers.Provider
+import io.github.aedev.flow.providers.ProviderCatalogueItem
 import io.github.aedev.flow.providers.ProviderRegistry
 
 sealed class ProviderRoute(val route: String) {
@@ -25,7 +26,7 @@ fun String.decodeURL(): String = java.net.URLDecoder.decode(this, "UTF-8")
 @Composable
 fun ProviderNavHost(
     navController: NavHostController,
-    onPlayVideo: (String) -> Unit
+    onPlayVideo: (ProviderCatalogueItem) -> Unit
 ) {
     NavHost(
         navController = navController,
@@ -34,7 +35,7 @@ fun ProviderNavHost(
         composable(ProviderRoute.UnifiedHome.route) {
             UnifiedHomeScreen(
                 onVideoClick = { item ->
-                    onPlayVideo(item.post.link)
+                    onPlayVideo(item)
                 }
             )
         }
@@ -54,7 +55,7 @@ fun ProviderNavHost(
             VideoListScreen(
                 provider = provider,
                 onVideoClick = { post ->
-                    onPlayVideo(post.link)
+                    onPlayVideo(ProviderCatalogueItem(provider.value, provider.name, post))
                 }
             )
         }
