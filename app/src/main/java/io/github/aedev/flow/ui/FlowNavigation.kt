@@ -341,7 +341,6 @@ fun NavGraphBuilder.flowAppGraph(
         )
     }
 
-    composable(
     composable(PROVIDER_CATALOGUE_ROUTE) {
         currentRoute.value = PROVIDER_CATALOGUE_ROUTE
         UnifiedHomeScreen(
