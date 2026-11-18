@@ -40,6 +40,8 @@ import io.github.aedev.flow.ui.screens.settings.topics.TopicPreferencesScreen
 import io.github.aedev.flow.ui.screens.settings.wellbeing.WellbeingScreen
 import io.github.aedev.flow.ui.screens.settings.widgets.WidgetsSettingsScreen
 import io.github.aedev.flow.ui.screens.sync.SyncScreen
+import io.github.aedev.flow.ui.settings.ProviderManagerScreen
+import io.github.aedev.flow.ui.settings.WarpModeScreen
 
 /**
  * The page a [SettingsTarget] opens. [onBack] is null for the root page beside the settings list,
@@ -214,6 +216,14 @@ internal fun SettingsDetail(
 
         SettingsDestination.DIAGNOSTICS -> {
             DiagnosticsScreen(onBack = onBack, highlight = target.highlight)
+        }
+
+        SettingsDestination.PROVIDER_MANAGER -> {
+            ProviderManagerScreen()
+        }
+
+        SettingsDestination.WARP_MODE -> {
+            WarpModeScreen()
         }
     }
 }
