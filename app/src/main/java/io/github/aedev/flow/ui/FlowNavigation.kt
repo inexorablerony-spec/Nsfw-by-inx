@@ -364,6 +364,7 @@ fun NavGraphBuilder.flowAppGraph(
     }
     
     composable(PROVIDER_PLAYBACK_ROUTE) {
+        currentRoute.value = PROVIDER_PLAYBACK_ROUTE
         val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
         val providerId = savedStateHandle?.get<String>(KEY_PROVIDER_ID)
         val providerName = savedStateHandle?.get<String>(KEY_PROVIDER_NAME)
