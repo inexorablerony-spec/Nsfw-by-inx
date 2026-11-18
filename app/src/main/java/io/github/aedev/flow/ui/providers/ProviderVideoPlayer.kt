@@ -5,7 +5,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.media3.common.Player
 import io.github.aedev.flow.data.model.Video
 import io.github.aedev.flow.player.EnhancedPlayerManager
 import io.github.aedev.flow.player.GlobalPlayerState
@@ -25,6 +24,8 @@ fun ProviderVideoPlayer(
     
     val playerManager = remember { EnhancedPlayerManager.getInstance() }
     val playerState by playerManager.playerState.collectAsState()
+    
+    val isCurrentVideo = playerState.currentVideoId == item.post.link
     
     LaunchedEffect(item.providerId, item.post.link, retryTrigger) {
         isResolving = true
@@ -94,21 +95,25 @@ fun ProviderVideoPlayer(
                     Text("Retry")
                 }
             }
-            playerState.isBuffering -> {
-                CircularProgressIndicator()
-                Text("Buffering...")
-            }
-            playerState.error != null -> {
+            isCurrentVideo && playerState.error != null -> {
                 Text("Playback error: ${playerState.error}")
                 Button(onClick = { retryTrigger++ }) {
                     Text("Retry")
                 }
             }
-            playerState.isPrepared && playerState.isPlaying -> {
+            isCurrentVideo && playerState.isBuffering -> {
+                CircularProgressIndicator()
+                Text("Buffering...")
+            }
+            isCurrentVideo && playerState.isPrepared && playerState.isPlaying -> {
                 Text("Playing")
             }
+            isCurrentVideo && playerState.isPrepared && !playerState.isPlaying -> {
+                Text("Paused")
+            }
             else -> {
-                Text("Ready")
+                CircularProgressIndicator()
+                Text("Starting playback...")
             }
         }
     }
