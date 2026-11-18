@@ -30,6 +30,13 @@ fun ProviderManagerScreen() {
             modifier = Modifier.padding(horizontal = 16.dp)
         )
         
+        Button(
+            onClick = { /* Navigate to provider_catalogue */ },
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text("Open Provider Catalogue")
+        }
+        
         Spacer(modifier = Modifier.height(16.dp))
         
         LazyColumn {
