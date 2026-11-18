@@ -1,11 +1,11 @@
 package io.github.aedev.flow.ui.providers
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.aedev.flow.providers.Provider
@@ -15,59 +15,45 @@ import io.github.aedev.flow.providers.ProviderRegistry
 fun ProviderListScreen(
     onProviderClick: (Provider) -> Unit
 ) {
-    val providers = remember { ProviderRegistry.getAll() }
+    val registryState by ProviderRegistry.state.collectAsState()
     
-    Column(modifier = Modifier.fillMaxSize()) {
-        Text(
-            text = "Providers",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(16.dp)
-        )
-        
-        LazyColumn {
-            items(providers, key = { it.value }) { provider ->
-                ProviderItem(
-                    provider = provider,
-                    onClick = { onProviderClick(provider) }
-                )
-            }
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(registryState.providers, key = { it.value }) { info ->
+            ProviderItem(
+                info = info,
+                onClick = { 
+                    ProviderRegistry.getByValue(info.value)?.let { onProviderClick(it) }
+                }
+            )
         }
     }
 }
 
 @Composable
 fun ProviderItem(
-    provider: Provider,
+    info: io.github.aedev.flow.providers.ProviderInfo,
     onClick: () -> Unit
 ) {
-    var isEnabled by remember { mutableStateOf(ProviderRegistry.isEnabled(provider.value)) }
-    
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        onClick = onClick
+            .padding(8.dp)
+            .clickable { onClick() }
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = provider.name,
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Text(
-                    text = provider.value,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Column {
+                Text(info.name, style = MaterialTheme.typography.titleMedium)
+                Text(info.description, style = MaterialTheme.typography.bodySmall)
             }
             Switch(
-                checked = isEnabled,
+                checked = info.enabled,
                 onCheckedChange = { enabled ->
-                    isEnabled = enabled
-                    ProviderRegistry.setEnabled(provider.value, enabled)
+                    ProviderRegistry.setEnabled(info.value, enabled)
                 }
             )
         }

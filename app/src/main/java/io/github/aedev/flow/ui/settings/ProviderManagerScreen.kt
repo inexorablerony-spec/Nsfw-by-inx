@@ -10,7 +10,9 @@ import androidx.compose.ui.unit.dp
 import io.github.aedev.flow.providers.ProviderRegistry
 
 @Composable
-fun ProviderManagerScreen() {
+fun ProviderManagerScreen(
+    onOpenCatalogue: () -> Unit = {}
+) {
     val registryState by ProviderRegistry.state.collectAsState()
     
     Column(modifier = Modifier.fillMaxSize()) {
@@ -19,6 +21,13 @@ fun ProviderManagerScreen() {
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(16.dp)
         )
+        
+        Button(
+            onClick = onOpenCatalogue,
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text("Open Provider Catalogue")
+        }
         
         LazyColumn {
             items(registryState.providers) { info ->
