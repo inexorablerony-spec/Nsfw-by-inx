@@ -370,17 +370,24 @@ object WarpProxyManager {
                 .start()
             
             val output = proc.inputStream.bufferedReader().readText()
-            val exitCode = proc.waitFor()
+            val exitCode = proc.waitFor(30, TimeUnit.SECONDS)
             
-            if (exitCode == 0 && File(configPath).exists()) {
+            if (!exitCode) {
+                proc.destroyForcibly()
+                Log.e(TAG, "Registration timed out")
+                return false
+            }
+            
+            val configFile = File(configPath)
+            if (proc.exitValue() == 0 && configFile.exists() && configFile.length() > 0) {
                 Log.i(TAG, "Registration successful")
                 true
             } else {
-                Log.e(TAG, "Registration failed: exit=$exitCode")
+                Log.e(TAG, "Registration failed: exit=\${proc.exitValue()}")
                 false
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Registration error: ${e.message}")
+            Log.e(TAG, "Registration error: \${e.message}")
             false
         }
     }
