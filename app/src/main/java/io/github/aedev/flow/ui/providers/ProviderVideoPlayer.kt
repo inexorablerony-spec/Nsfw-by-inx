@@ -6,13 +6,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import io.github.aedev.flow.providers.Provider
-import io.github.aedev.flow.providers.Stream
+import io.github.aedev.flow.providers.ProviderPlaybackManager
+import io.github.aedev.flow.providers.ProviderPlaybackRequest
 import kotlinx.coroutines.launch
 
 @Composable
@@ -24,7 +21,6 @@ fun ProviderVideoPlayer(
     val context = LocalContext.current
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
-    var player by remember { mutableStateOf<ExoPlayer?>(null) }
     val scope = rememberCoroutineScope()
     
     LaunchedEffect(videoLink) {
@@ -33,24 +29,14 @@ fun ProviderVideoPlayer(
                 val streams = provider.getStream(videoLink)
                 if (streams.isNotEmpty()) {
                     val stream = streams.first()
-                    
-                    val dataSourceFactory = DefaultHttpDataSource.Factory()
-                        .setUserAgent(stream.headers["User-Agent"] ?: "Mozilla/5.0")
-                        .setDefaultRequestProperties(stream.headers.filterKeys { it != "User-Agent" })
-                    
-                    val mediaSourceFactory = DefaultMediaSourceFactory(context)
-                        .setDataSourceFactory(dataSourceFactory)
-                    
-                    val newPlayer = ExoPlayer.Builder(context)
-                        .setMediaSourceFactory(mediaSourceFactory)
-                        .build()
-                    
-                    val mediaItem = MediaItem.fromUri(stream.link)
-                    newPlayer.setMediaItem(mediaItem)
-                    newPlayer.prepare()
-                    newPlayer.playWhenReady = true
-                    
-                    player = newPlayer
+                    val request = ProviderPlaybackRequest(
+                        url = stream.link,
+                        userAgent = stream.headers["User-Agent"],
+                        referer = stream.headers["Referer"],
+                        cookie = stream.headers["Cookie"],
+                        headers = stream.headers
+                    )
+                    ProviderPlaybackManager.play(context, request)
                 } else {
                     error = "No streams found"
                 }
@@ -63,7 +49,9 @@ fun ProviderVideoPlayer(
     
     DisposableEffect(Unit) {
         onDispose {
-            player?.release()
+            scope.launch {
+                ProviderPlaybackManager.release()
+            }
         }
     }
     
@@ -72,11 +60,11 @@ fun ProviderVideoPlayer(
             CircularProgressIndicator()
         } else if (error != null) {
             Text("Error: $error")
-        } else if (player != null) {
+        } else {
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
-                        this.player = player
+                        player = ProviderPlaybackManager.getPlayer()
                     }
                 },
                 modifier = Modifier.fillMaxSize()
