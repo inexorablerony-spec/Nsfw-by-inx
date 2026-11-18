@@ -2,20 +2,23 @@ package io.github.aedev.flow.providers
 
 import android.content.Context
 import android.content.SharedPreferences
+import java.util.concurrent.ConcurrentHashMap
 
 object ProviderRegistry {
-    private val allProviders = mutableMapOf<String, Provider>()
-    private val enabledProviders = mutableSetOf<String>()
+    private val allProviders = ConcurrentHashMap<String, Provider>()
+    private val enabledProviders = ConcurrentHashMap.newKeySet<String>()
+    private val registrationOrder = mutableListOf<String>()
     private var prefs: SharedPreferences? = null
     private var initialized = false
     
+    @Synchronized
     fun init(ctx: Context) {
         if (initialized) return
         prefs = ctx.getSharedPreferences("providers", Context.MODE_PRIVATE)
         
         if (allProviders.isEmpty()) {
-            register(EpornerProvider())
-            register(WebViewProvider(ctx))
+            register(EpornerProvider(), isNew = true)
+            register(WebViewProvider(ctx), isNew = true)
         }
         
         loadEnabledProviders()
@@ -27,37 +30,49 @@ object ProviderRegistry {
         if (saved != null) {
             enabledProviders.clear()
             enabledProviders.addAll(saved)
-        } else {
-            enabledProviders.addAll(allProviders.keys)
         }
     }
     
     private fun saveEnabledProviders() {
-        prefs?.edit()?.putStringSet("enabled", enabledProviders)?.apply()
+        val copy = enabledProviders.toSet()
+        prefs?.edit()?.putStringSet("enabled", copy)?.apply()
     }
     
-    fun register(provider: Provider) {
+    @Synchronized
+    fun register(provider: Provider, isNew: Boolean = false) {
+        val isFirstRegistration = !allProviders.containsKey(provider.value)
         allProviders[provider.value] = provider
-        if (!enabledProviders.contains(provider.value)) {
-            enabledProviders.add(provider.value)
-            saveEnabledProviders()
+        
+        if (isFirstRegistration) {
+            registrationOrder.add(provider.value)
+            if (isNew) {
+                enabledProviders.add(provider.value)
+                saveEnabledProviders()
+            }
         }
     }
     
+    @Synchronized
     fun unregister(value: String) {
         allProviders.remove(value)
         enabledProviders.remove(value)
+        registrationOrder.remove(value)
         saveEnabledProviders()
     }
     
-    fun getAll(): List<Provider> = allProviders.values.toList()
+    fun getAll(): List<Provider> = registrationOrder.mapNotNull { allProviders[it] }
     
-    fun getEnabled(): List<Provider> = allProviders.values.filter { enabledProviders.contains(it.value) }
+    fun getEnabled(): List<Provider> = registrationOrder.mapNotNull { 
+        allProviders[it]?.takeIf { enabledProviders.contains(it.value) }
+    }
     
-    fun getAllInfo(): List<ProviderInfo> = allProviders.values.map { it.getInfo(enabledProviders.contains(it.value)) }
+    fun getAllInfo(): List<ProviderInfo> = registrationOrder.mapNotNull { 
+        allProviders[it]?.getInfo(enabledProviders.contains(it))
+    }
     
     fun isEnabled(value: String): Boolean = enabledProviders.contains(value)
     
+    @Synchronized
     fun setEnabled(value: String, enabled: Boolean) {
         if (enabled) {
             enabledProviders.add(value)
