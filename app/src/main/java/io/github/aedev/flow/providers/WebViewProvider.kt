@@ -27,14 +27,16 @@ class WebViewProvider(private val context: Context) : Provider {
         when (val result = extractor.extractMedia(link)) {
             is ExtractionResult.Success -> {
                 result.candidates.map { candidate ->
+                    val headers = mutableMapOf(
+                        "User-Agent" to candidate.userAgent,
+                        "Referer" to candidate.referer
+                    )
+                    candidate.cookies?.let { headers["Cookie"] = it }
                     Stream(
                         server = "WebView",
                         link = candidate.url,
                         type = candidate.type,
-                        headers = mapOf(
-                            "User-Agent" to candidate.userAgent,
-                            "Referer" to candidate.referer
-                        )
+                        headers = headers
                     )
                 }
             }
