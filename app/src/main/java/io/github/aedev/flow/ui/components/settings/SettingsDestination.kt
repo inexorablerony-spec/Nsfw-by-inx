@@ -53,6 +53,8 @@ enum class SettingsDestination(
     ABOUT("about", R.string.settings_item_about_flow),
     REMOTE_GUIDE("remote_guide", R.string.tv_remote_guide_title, ABOUT),
     DIAGNOSTICS("diagnostics", R.string.settings_item_diagnostics),
+    PROVIDER_MANAGER("provider_manager", R.string.settings_title),
+    WARP_MODE("warp_mode", R.string.settings_network_title),
     ;
 
     /** The top-level destination this page lives under — what the settings list shows as selected. */
