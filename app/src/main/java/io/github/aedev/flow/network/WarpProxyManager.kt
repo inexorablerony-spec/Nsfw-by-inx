@@ -11,9 +11,9 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Proxy
-import java.net.ServerSocket
 import java.net.URL
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * WARP Proxy Manager for Cloudflare WARP integration.
@@ -23,8 +23,8 @@ import java.util.concurrent.TimeUnit
  * IMPORTANT: This is an app-level proxy, not a system VPN.
  * Connection is only reported after Cloudflare trace confirms "warp=on".
  * 
- * NOTE: This implementation requires libusque.so native binary.
- * The binary must be built from usque source and included in the APK.
+ * NOTE: Requires libusque.so native binary (arm64-v8a only).
+ * CLI syntax and registration must be verified against usque source.
  */
 object WarpProxyManager {
     private const val TAG = "WarpProxyManager"
@@ -41,6 +41,7 @@ object WarpProxyManager {
     private var outputJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val processLogs = mutableListOf<String>()
+    private val startupGeneration = AtomicLong(0)
     
     enum class State {
         OFF,
@@ -67,6 +68,8 @@ object WarpProxyManager {
      * Returns true only after Cloudflare trace confirms "warp=on".
      */
     suspend fun start(context: Context): Boolean = withContext(Dispatchers.IO) {
+        val generation = startupGeneration.incrementAndGet()
+        
         val shouldStart = synchronized(lock) {
             if (_state.value == State.CONNECTED || _state.value == State.STARTING) {
                 false
@@ -80,56 +83,64 @@ object WarpProxyManager {
         if (!shouldStart) return@withContext _state.value == State.CONNECTED
         
         startJob = coroutineContext[Job]
+        var proc: Process? = null
         
         try {
             val binary = getBinaryFile(context)
             if (!binary.exists()) {
-                setError("libusque.so not found. Build from usque source.")
+                setErrorIfCurrent(generation, "libusque.so not found. Build from usque source for arm64-v8a.")
                 return@withContext false
             }
             
             val port = allocatePort()
-            val proc = launchProxy(binary, port)
+            if (port == null) {
+                setErrorIfCurrent(generation, "Failed to allocate port")
+                return@withContext false
+            }
             
+            proc = launchProxy(binary, port)
             if (proc == null) {
-                setError("Failed to start proxy process")
+                setErrorIfCurrent(generation, "Failed to start proxy process")
                 return@withContext false
             }
             
-            // Start output drain
-            startOutputDrain(proc)
-            
-            // Check if cancelled
-            if (!isActive) {
-                cleanup(proc)
-                return@withContext false
-            }
-            
-            if (!verifyConnection(port, proc)) {
-                cleanup(proc)
-                setError("Connection verification failed")
-                return@withContext false
-            }
-            
-            // Check if cancelled before setting CONNECTED
-            if (!isActive) {
-                cleanup(proc)
-                return@withContext false
-            }
-            
+            // Store process immediately
             synchronized(lock) {
                 warpProcess = proc
                 currentPort = port
             }
+            
+            // Start output drain
+            startOutputDrain(proc, generation)
+            
+            // Check if cancelled
+            if (!isActive || startupGeneration.get() != generation) {
+                cleanupProcess(proc, generation)
+                return@withContext false
+            }
+            
+            if (!verifyConnection(port, proc)) {
+                cleanupProcess(proc, generation)
+                setErrorIfCurrent(generation, "Connection verification failed")
+                return@withContext false
+            }
+            
+            // Check if cancelled before setting CONNECTED
+            if (!isActive || startupGeneration.get() != generation) {
+                cleanupProcess(proc, generation)
+                return@withContext false
+            }
+            
             _state.value = State.CONNECTED
             
             // Monitor process
+            val monitoredProc = proc
             scope.launch {
                 try {
-                    proc.waitFor()
+                    monitoredProc.waitFor()
                 } catch (_: Exception) {}
                 synchronized(lock) {
-                    if (warpProcess == proc) {
+                    if (warpProcess == monitoredProc) {
                         Log.i(TAG, "WARP process terminated unexpectedly")
                         warpProcess = null
                         currentPort = null
@@ -142,11 +153,14 @@ object WarpProxyManager {
             Log.i(TAG, "WARP connected on port $port")
             true
         } catch (e: CancellationException) {
-            cleanup(warpProcess)
-            _state.value = State.OFF
+            cleanupProcess(proc, generation)
+            if (startupGeneration.get() == generation) {
+                _state.value = State.OFF
+            }
             false
         } catch (e: Exception) {
-            setError(e.message ?: "Unknown error")
+            cleanupProcess(proc, generation)
+            setErrorIfCurrent(generation, e.message ?: "Unknown error")
             false
         }
     }
@@ -155,49 +169,63 @@ object WarpProxyManager {
      * Stop WARP proxy.
      */
     fun stop() {
+        val proc: Process?
         synchronized(lock) {
             if (_state.value == State.OFF) return
             
-            // Cancel startup job
+            startupGeneration.incrementAndGet()
             startJob?.cancel()
             startJob = null
             
             _state.value = State.STOPPING
             
-            val proc = warpProcess
+            proc = warpProcess
             warpProcess = null
             currentPort = null
-            
-            if (proc != null) {
-                cleanup(proc)
-            }
         }
+        
+        if (proc != null) {
+            cleanupProcess(proc, -1)
+        }
+        
         _state.value = State.OFF
         _errorMessage.value = null
         Log.i(TAG, "WARP stopped")
     }
     
-    private fun setError(message: String) {
-        _state.value = State.ERROR
-        _errorMessage.value = message
-        Log.e(TAG, message)
+    private fun setErrorIfCurrent(generation: Long, message: String) {
+        if (startupGeneration.get() == generation) {
+            _state.value = State.ERROR
+            _errorMessage.value = message
+            Log.e(TAG, message)
+        }
     }
     
-    private fun cleanup(proc: Process?) {
+    private fun cleanupProcess(proc: Process?, generation: Long) {
         proc ?: return
-        outputJob?.cancel()
-        outputJob = null
+        
+        if (generation >= 0 && startupGeneration.get() == generation) {
+            outputJob?.cancel()
+            outputJob = null
+        }
         
         proc.destroy()
         try {
             if (!proc.waitFor(SHUTDOWN_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
                 proc.destroyForcibly()
+                proc.waitFor(SHUTDOWN_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             }
+        } catch (_: Exception) {}
+        
+        try {
+            proc.inputStream.close()
+            proc.outputStream.close()
+            proc.errorStream.close()
         } catch (_: Exception) {}
     }
     
-    private fun startOutputDrain(proc: Process) {
-        outputJob = scope.launch {
+    private fun startOutputDrain(proc: Process, generation: Long) {
+        val job = scope.launch {
             try {
                 BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
                     var line: String?
@@ -215,6 +243,14 @@ object WarpProxyManager {
                 }
             } catch (_: Exception) {}
         }
+        
+        synchronized(lock) {
+            if (startupGeneration.get() == generation) {
+                outputJob = job
+            } else {
+                job.cancel()
+            }
+        }
     }
     
     private fun getBinaryFile(context: Context): File {
@@ -227,14 +263,15 @@ object WarpProxyManager {
         return nativeLib
     }
     
-    private fun allocatePort(): Int {
+    private fun allocatePort(): Int? {
+        // NOTE: Port allocation needs to be verified against usque CLI
+        // Current approach: let usque bind to port 0 if supported
+        // For now, try to find an available port
         return try {
-            ServerSocket(0).use { socket ->
-                socket.localPort
-            }
+            java.net.ServerSocket(0).use { it.localPort }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to allocate port: ${e.message}")
-            8086
+            null
         }
     }
     
@@ -242,6 +279,7 @@ object WarpProxyManager {
         return try {
             // NOTE: CLI syntax needs to be verified against usque source
             // Current assumption: "usque http --port PORT"
+            Log.i(TAG, "Launching usque on port $port")
             ProcessBuilder(binary.absolutePath, "http", "--port", port.toString())
                 .redirectErrorStream(true)
                 .start()
