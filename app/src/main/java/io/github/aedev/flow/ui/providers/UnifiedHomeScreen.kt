@@ -64,30 +64,31 @@ fun UnifiedHomeScreen(
                 }
             }
             else -> {
+                if (errors.isNotEmpty()) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text(
+                            text = "Some providers failed (${errors.size})",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        errors.forEach { error ->
+                            Text(
+                                text = error,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
                     contentPadding = PaddingValues(8.dp)
                 ) {
                     items(items) { item ->
                         VideoCard(item = item, onClick = { onVideoClick(item) })
                     }
-                }
-            }
-        }
-        
-        if (errors.isNotEmpty() && items.isNotEmpty()) {
-            Column(modifier = Modifier.padding(8.dp)) {
-                Text(
-                    text = "Some providers failed (${errors.size})",
-                    color = MaterialTheme.colorScheme.error
-                )
-                errors.forEach { error ->
-                    Text(
-                        text = error,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(vertical = 2.dp)
-                    )
                 }
             }
         }
