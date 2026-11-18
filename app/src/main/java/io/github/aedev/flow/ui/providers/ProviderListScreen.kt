@@ -15,7 +15,7 @@ import io.github.aedev.flow.providers.ProviderRegistry
 fun ProviderListScreen(
     onProviderClick: (Provider) -> Unit
 ) {
-    val providers = remember { ProviderRegistry.getEnabled() }
+    val providers = remember { ProviderRegistry.getAll() }
     
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
