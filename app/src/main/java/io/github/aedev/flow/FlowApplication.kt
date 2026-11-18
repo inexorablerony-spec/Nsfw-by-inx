@@ -34,6 +34,7 @@ import io.github.aedev.flow.notification.BreakReminderTimer
 import io.github.aedev.flow.notification.DailyLimitGuard
 import io.github.aedev.flow.notification.NotificationHelper
 import io.github.aedev.flow.player.PlaybackShutdown
+import io.github.aedev.flow.providers.ProviderRegistry
 import io.github.aedev.flow.player.SleepTimerManager
 import io.github.aedev.flow.sync2.service.LinkedCatchUp
 import io.github.aedev.flow.sync2.service.LinkedForeground

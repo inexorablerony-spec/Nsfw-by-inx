@@ -119,6 +119,7 @@ object ProviderRegistry {
     
     @Synchronized
     fun setEnabled(value: String, enabled: Boolean) {
+        if (!allProviders.containsKey(value)) return
         if (enabled) {
             enabledProviders.add(value)
         } else {
