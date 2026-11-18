@@ -24,7 +24,7 @@ fun ProviderVideoPlayer(
     
     val playerManager = remember { EnhancedPlayerManager.getInstance() }
     
-    LaunchedEffect(videoLink) {
+    LaunchedEffect(item.providerId, item.post.link) {
         isLoading = true
         error = null
         try {
@@ -34,12 +34,17 @@ fun ProviderVideoPlayer(
                 isLoading = false
                 return@LaunchedEffect
             }
+            if (!ProviderRegistry.isEnabled(item.providerId)) {
+                error = "This provider is disabled"
+                isLoading = false
+                return@LaunchedEffect
+            }
             val streams = provider.getStream(item.post.link)
             if (streams.isNotEmpty()) {
                 val stream = streams.first()
                 
                 val video = Video(
-                    id = videoLink,
+                    id = item.post.link,
                     title = item.post.title,
                     channelName = provider.name,
                     channelId = provider.value,
