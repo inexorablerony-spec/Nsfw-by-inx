@@ -400,6 +400,7 @@ fun NavGraphBuilder.flowAppGraph(
             onOpenDonations = { navController.navigate("donations") },
             onOpenRecap = { navController.navigate(RecapRoutes.stats()) },
             onOpenUpdate = { navController.navigate(UPDATE_ROUTE) },
+            onOpenProviderCatalogue = { navController.navigate(PROVIDER_CATALOGUE_ROUTE) },
         )
     }
 
