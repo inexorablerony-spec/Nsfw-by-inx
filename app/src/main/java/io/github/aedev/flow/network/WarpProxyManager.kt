@@ -5,11 +5,15 @@ import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.io.BufferedReader
 import java.io.File
+import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Proxy
+import java.net.ServerSocket
 import java.net.URL
+import java.util.concurrent.TimeUnit
 
 /**
  * WARP Proxy Manager for Cloudflare WARP integration.
@@ -18,6 +22,9 @@ import java.net.URL
  * 
  * IMPORTANT: This is an app-level proxy, not a system VPN.
  * Connection is only reported after Cloudflare trace confirms "warp=on".
+ * 
+ * NOTE: This implementation requires libusque.so native binary.
+ * The binary must be built from usque source and included in the APK.
  */
 object WarpProxyManager {
     private const val TAG = "WarpProxyManager"
@@ -25,11 +32,15 @@ object WarpProxyManager {
     private const val MAX_RETRIES = 10
     private const val RETRY_DELAY_MS = 500L
     private const val SHUTDOWN_TIMEOUT_MS = 3000L
+    private const val MAX_LOG_LINES = 100
     
     private val lock = Any()
     private var warpProcess: Process? = null
     private var currentPort: Int? = null
+    private var startJob: Job? = null
+    private var outputJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val processLogs = mutableListOf<String>()
     
     enum class State {
         OFF,
@@ -49,29 +60,33 @@ object WarpProxyManager {
     fun getErrorMessage(): String? = _errorMessage.value
     fun isConnected(): Boolean = _state.value == State.CONNECTED
     fun getPort(): Int? = currentPort
+    fun getLogs(): List<String> = processLogs.toList()
     
     /**
      * Start WARP proxy.
      * Returns true only after Cloudflare trace confirms "warp=on".
      */
     suspend fun start(context: Context): Boolean = withContext(Dispatchers.IO) {
-        synchronized(lock) {
-            if (_state.value == State.CONNECTED) return@withContext true
-            if (_state.value == State.STARTING) return@withContext false
+        val shouldStart = synchronized(lock) {
+            if (_state.value == State.CONNECTED || _state.value == State.STARTING) {
+                false
+            } else {
+                _state.value = State.STARTING
+                _errorMessage.value = null
+                true
+            }
         }
         
-        _state.value = State.STARTING
-        _errorMessage.value = null
+        if (!shouldStart) return@withContext _state.value == State.CONNECTED
+        
+        startJob = coroutineContext[Job]
         
         try {
             val binary = getBinaryFile(context)
             if (!binary.exists()) {
-                setError("libusque.so not found")
+                setError("libusque.so not found. Build from usque source.")
                 return@withContext false
             }
-            
-            // TODO: Implement Cloudflare registration
-            // For now, assume config exists or usque handles it
             
             val port = allocatePort()
             val proc = launchProxy(binary, port)
@@ -81,9 +96,24 @@ object WarpProxyManager {
                 return@withContext false
             }
             
+            // Start output drain
+            startOutputDrain(proc)
+            
+            // Check if cancelled
+            if (!isActive) {
+                cleanup(proc)
+                return@withContext false
+            }
+            
             if (!verifyConnection(port, proc)) {
                 cleanup(proc)
                 setError("Connection verification failed")
+                return@withContext false
+            }
+            
+            // Check if cancelled before setting CONNECTED
+            if (!isActive) {
+                cleanup(proc)
                 return@withContext false
             }
             
@@ -104,13 +134,17 @@ object WarpProxyManager {
                         warpProcess = null
                         currentPort = null
                         _state.value = State.ERROR
-                        _errorMessage.value = "Process terminated"
+                        _errorMessage.value = "Process terminated unexpectedly"
                     }
                 }
             }
             
             Log.i(TAG, "WARP connected on port $port")
             true
+        } catch (e: CancellationException) {
+            cleanup(warpProcess)
+            _state.value = State.OFF
+            false
         } catch (e: Exception) {
             setError(e.message ?: "Unknown error")
             false
@@ -123,6 +157,11 @@ object WarpProxyManager {
     fun stop() {
         synchronized(lock) {
             if (_state.value == State.OFF) return
+            
+            // Cancel startup job
+            startJob?.cancel()
+            startJob = null
+            
             _state.value = State.STOPPING
             
             val proc = warpProcess
@@ -130,12 +169,7 @@ object WarpProxyManager {
             currentPort = null
             
             if (proc != null) {
-                proc.destroy()
-                try {
-                    if (!proc.waitFor(SHUTDOWN_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)) {
-                        proc.destroyForcibly()
-                    }
-                } catch (_: Exception) {}
+                cleanup(proc)
             }
         }
         _state.value = State.OFF
@@ -149,13 +183,38 @@ object WarpProxyManager {
         Log.e(TAG, message)
     }
     
-    private fun cleanup(proc: Process) {
+    private fun cleanup(proc: Process?) {
+        proc ?: return
+        outputJob?.cancel()
+        outputJob = null
+        
         proc.destroy()
         try {
-            if (!proc.waitFor(SHUTDOWN_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+            if (!proc.waitFor(SHUTDOWN_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
                 proc.destroyForcibly()
             }
         } catch (_: Exception) {}
+    }
+    
+    private fun startOutputDrain(proc: Process) {
+        outputJob = scope.launch {
+            try {
+                BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
+                    var line: String?
+                    while (isActive && reader.readLine().also { line = it } != null) {
+                        line?.let { log ->
+                            synchronized(processLogs) {
+                                processLogs.add(log)
+                                if (processLogs.size > MAX_LOG_LINES) {
+                                    processLogs.removeAt(0)
+                                }
+                            }
+                            Log.d(TAG, "usque: $log")
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
     }
     
     private fun getBinaryFile(context: Context): File {
@@ -174,12 +233,15 @@ object WarpProxyManager {
                 socket.localPort
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Failed to allocate port: ${e.message}")
             8086
         }
     }
     
     private fun launchProxy(binary: File, port: Int): Process? {
         return try {
+            // NOTE: CLI syntax needs to be verified against usque source
+            // Current assumption: "usque http --port PORT"
             ProcessBuilder(binary.absolutePath, "http", "--port", port.toString())
                 .redirectErrorStream(true)
                 .start()
@@ -191,8 +253,8 @@ object WarpProxyManager {
     
     private suspend fun verifyConnection(port: Int, proc: Process): Boolean = withContext(Dispatchers.IO) {
         repeat(MAX_RETRIES) { attempt ->
-            if (!proc.isAlive) {
-                Log.e(TAG, "Process exited during verification")
+            if (!isActive || !proc.isAlive) {
+                Log.e(TAG, "Process exited or cancelled during verification")
                 return@withContext false
             }
             
