@@ -51,22 +51,12 @@ object RepositoryModule {
 
     @Provides
     @Singleton
-    fun provideMusicPlaylistRepository(
-        @ApplicationContext context: Context,
-    ): io.github.aedev.flow.data.music.PlaylistRepository =
-        io.github.aedev.flow.data.music
-            .PlaylistRepository(context)
-
-    // VideoDownloadManager is now @Singleton @Inject — Hilt provides it automatically
-    @Provides
-    @Singleton
     fun providePlayerPreferences(
         @ApplicationContext context: Context,
     ): io.github.aedev.flow.data.local.PlayerPreferences =
         io.github.aedev.flow.data.local
             .PlayerPreferences(context)
 
-    /** Transitional: the music player manager still reaches the queue store through getInstance, so this hands injected consumers the same instance. */
     @Provides
     @Singleton
     fun provideQueuePersistence(
@@ -75,11 +65,6 @@ object RepositoryModule {
         io.github.aedev.flow.data.local.QueuePersistence
             .getInstance(context)
 
-    /**
-     * Transitional: [io.github.aedev.flow.data.local.BackupRepository] still builds its own
-     * collaborators, so it is provided here rather than injected through its constructor. One
-     * instance serves the whole app.
-     */
     @Provides
     @Singleton
     fun provideBackupRepository(
