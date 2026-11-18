@@ -22,21 +22,18 @@ fun ProviderVideoPlayer(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var streams by remember { mutableStateOf<List<Stream>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    var player by remember { mutableStateOf<ExoPlayer?>(null) }
     val scope = rememberCoroutineScope()
-    
-    val exoPlayer = remember {
-        ExoPlayer.Builder(context).build()
-    }
     
     LaunchedEffect(videoLink) {
         scope.launch {
             try {
-                streams = provider.getStream(videoLink)
+                val streams = provider.getStream(videoLink)
                 if (streams.isNotEmpty()) {
                     val stream = streams.first()
+                    
                     val dataSourceFactory = DefaultHttpDataSource.Factory()
                         .setUserAgent(stream.headers["User-Agent"] ?: "Mozilla/5.0")
                         .setDefaultRequestProperties(stream.headers.filterKeys { it != "User-Agent" })
@@ -44,16 +41,16 @@ fun ProviderVideoPlayer(
                     val mediaSourceFactory = DefaultMediaSourceFactory(context)
                         .setDataSourceFactory(dataSourceFactory)
                     
-                    val player = ExoPlayer.Builder(context)
+                    val newPlayer = ExoPlayer.Builder(context)
                         .setMediaSourceFactory(mediaSourceFactory)
                         .build()
                     
                     val mediaItem = MediaItem.fromUri(stream.link)
-                    player.setMediaItem(mediaItem)
-                    player.prepare()
-                    player.playWhenReady = true
+                    newPlayer.setMediaItem(mediaItem)
+                    newPlayer.prepare()
+                    newPlayer.playWhenReady = true
                     
-                    exoPlayer.release()
+                    player = newPlayer
                 } else {
                     error = "No streams found"
                 }
@@ -66,7 +63,7 @@ fun ProviderVideoPlayer(
     
     DisposableEffect(Unit) {
         onDispose {
-            exoPlayer.release()
+            player?.release()
         }
     }
     
@@ -75,11 +72,11 @@ fun ProviderVideoPlayer(
             CircularProgressIndicator()
         } else if (error != null) {
             Text("Error: $error")
-        } else {
+        } else if (player != null) {
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
-                        player = exoPlayer
+                        this.player = player
                     }
                 },
                 modifier = Modifier.fillMaxSize()
