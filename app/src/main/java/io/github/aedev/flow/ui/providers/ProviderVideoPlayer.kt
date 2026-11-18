@@ -8,7 +8,6 @@ import androidx.compose.ui.platform.LocalContext
 import io.github.aedev.flow.data.model.Video
 import io.github.aedev.flow.player.EnhancedPlayerManager
 import io.github.aedev.flow.player.GlobalPlayerState
-import io.github.aedev.flow.player.MiniPlayerExpansionState
 import io.github.aedev.flow.providers.Provider
 import kotlinx.coroutines.CancellationException
 
