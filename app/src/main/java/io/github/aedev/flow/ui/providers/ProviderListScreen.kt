@@ -31,6 +31,13 @@ fun ProviderListScreen(
                     onClick = { onProviderClick(provider) }
                 )
             }
+            Switch(
+                checked = isEnabled,
+                onCheckedChange = { enabled ->
+                    isEnabled = enabled
+                    ProviderRegistry.setEnabled(provider.value, enabled)
+                }
+            )
         }
     }
 }
@@ -40,6 +47,8 @@ fun ProviderItem(
     provider: Provider,
     onClick: () -> Unit
 ) {
+    var isEnabled by remember { mutableStateOf(ProviderRegistry.isEnabled(provider.value)) }
+    
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -61,6 +70,13 @@ fun ProviderItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            Switch(
+                checked = isEnabled,
+                onCheckedChange = { enabled ->
+                    isEnabled = enabled
+                    ProviderRegistry.setEnabled(provider.value, enabled)
+                }
+            )
         }
     }
 }
