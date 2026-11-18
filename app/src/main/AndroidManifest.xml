@@ -58,6 +58,7 @@
 
     <!-- Lets the equalizer page offer an installed system or third-party equalizer panel. -->
     <queries>
+        <package android:name="com.cloudflare.onedotonedotonedotone" />
         <intent>
             <action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" />
         </intent>
