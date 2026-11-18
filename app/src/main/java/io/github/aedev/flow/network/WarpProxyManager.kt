@@ -33,6 +33,7 @@ object WarpProxyManager {
     private const val RETRY_DELAY_MS = 500L
     private const val SHUTDOWN_TIMEOUT_MS = 3000L
     private const val MAX_LOG_LINES = 100
+    private const val MAX_PORT_RETRIES = 5
     
     private val lock = Any()
     private var warpProcess: Process? = null
@@ -68,12 +69,12 @@ object WarpProxyManager {
      * Returns true only after Cloudflare trace confirms "warp=on".
      */
     suspend fun start(context: Context): Boolean = withContext(Dispatchers.IO) {
-        val generation = startupGeneration.incrementAndGet()
-        
+        val generation: Long
         val shouldStart = synchronized(lock) {
             if (_state.value == State.CONNECTED || _state.value == State.STARTING) {
                 false
             } else {
+                generation = startupGeneration.incrementAndGet()
                 _state.value = State.STARTING
                 _errorMessage.value = null
                 true
@@ -94,7 +95,7 @@ object WarpProxyManager {
             
             val port = allocatePort()
             if (port == null) {
-                setErrorIfCurrent(generation, "Failed to allocate port")
+                setErrorIfCurrent(generation, "Failed to allocate port after $MAX_PORT_RETRIES retries")
                 return@withContext false
             }
             
@@ -104,34 +105,51 @@ object WarpProxyManager {
                 return@withContext false
             }
             
-            // Store process immediately
-            synchronized(lock) {
-                warpProcess = proc
-                currentPort = port
+            // Store process atomically if still current
+            val stored = synchronized(lock) {
+                if (startupGeneration.get() == generation && _state.value == State.STARTING) {
+                    warpProcess = proc
+                    currentPort = port
+                    true
+                } else {
+                    false
+                }
+            }
+            
+            if (!stored) {
+                cleanupProcess(proc)
+                return@withContext false
             }
             
             // Start output drain
             startOutputDrain(proc, generation)
             
             // Check if cancelled
-            if (!isActive || startupGeneration.get() != generation) {
-                cleanupProcess(proc, generation)
+            if (!isActive || !isGenerationCurrent(generation)) {
+                cleanupProcess(proc)
                 return@withContext false
             }
             
             if (!verifyConnection(port, proc)) {
-                cleanupProcess(proc, generation)
+                cleanupProcess(proc)
                 setErrorIfCurrent(generation, "Connection verification failed")
                 return@withContext false
             }
             
             // Check if cancelled before setting CONNECTED
-            if (!isActive || startupGeneration.get() != generation) {
-                cleanupProcess(proc, generation)
-                return@withContext false
+            val connected = synchronized(lock) {
+                if (startupGeneration.get() == generation && _state.value == State.STARTING) {
+                    _state.value = State.CONNECTED
+                    true
+                } else {
+                    false
+                }
             }
             
-            _state.value = State.CONNECTED
+            if (!connected) {
+                cleanupProcess(proc)
+                return@withContext false
+            }
             
             // Monitor process
             val monitoredProc = proc
@@ -153,13 +171,15 @@ object WarpProxyManager {
             Log.i(TAG, "WARP connected on port $port")
             true
         } catch (e: CancellationException) {
-            cleanupProcess(proc, generation)
-            if (startupGeneration.get() == generation) {
-                _state.value = State.OFF
+            cleanupProcess(proc)
+            synchronized(lock) {
+                if (startupGeneration.get() == generation) {
+                    _state.value = State.OFF
+                }
             }
             false
         } catch (e: Exception) {
-            cleanupProcess(proc, generation)
+            cleanupProcess(proc)
             setErrorIfCurrent(generation, e.message ?: "Unknown error")
             false
         }
@@ -185,29 +205,34 @@ object WarpProxyManager {
         }
         
         if (proc != null) {
-            cleanupProcess(proc, -1)
+            cleanupProcess(proc)
         }
         
-        _state.value = State.OFF
-        _errorMessage.value = null
+        synchronized(lock) {
+            if (_state.value == State.STOPPING) {
+                _state.value = State.OFF
+                _errorMessage.value = null
+            }
+        }
         Log.i(TAG, "WARP stopped")
     }
     
+    private fun isGenerationCurrent(generation: Long): Boolean {
+        return synchronized(lock) { startupGeneration.get() == generation }
+    }
+    
     private fun setErrorIfCurrent(generation: Long, message: String) {
-        if (startupGeneration.get() == generation) {
-            _state.value = State.ERROR
-            _errorMessage.value = message
-            Log.e(TAG, message)
+        synchronized(lock) {
+            if (startupGeneration.get() == generation) {
+                _state.value = State.ERROR
+                _errorMessage.value = message
+                Log.e(TAG, message)
+            }
         }
     }
     
-    private fun cleanupProcess(proc: Process?, generation: Long) {
+    private fun cleanupProcess(proc: Process?) {
         proc ?: return
-        
-        if (generation >= 0 && startupGeneration.get() == generation) {
-            outputJob?.cancel()
-            outputJob = null
-        }
         
         proc.destroy()
         try {
@@ -246,6 +271,7 @@ object WarpProxyManager {
         
         synchronized(lock) {
             if (startupGeneration.get() == generation) {
+                outputJob?.cancel()
                 outputJob = job
             } else {
                 job.cancel()
@@ -264,15 +290,22 @@ object WarpProxyManager {
     }
     
     private fun allocatePort(): Int? {
-        // NOTE: Port allocation needs to be verified against usque CLI
-        // Current approach: let usque bind to port 0 if supported
-        // For now, try to find an available port
-        return try {
-            java.net.ServerSocket(0).use { it.localPort }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to allocate port: ${e.message}")
-            null
+        // Try to find an available port with retries
+        repeat(MAX_PORT_RETRIES) { attempt ->
+            try {
+                java.net.ServerSocket(0).use { socket ->
+                    val port = socket.localPort
+                    // Try to bind to verify it's available
+                    java.net.ServerSocket(port).use { 
+                        return port 
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Port allocation attempt ${attempt + 1} failed: ${e.message}")
+            }
         }
+        Log.e(TAG, "Failed to allocate port after $MAX_PORT_RETRIES retries")
+        return null
     }
     
     private fun launchProxy(binary: File, port: Int): Process? {
