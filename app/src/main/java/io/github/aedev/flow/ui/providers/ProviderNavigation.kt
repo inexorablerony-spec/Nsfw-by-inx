@@ -9,6 +9,7 @@ import io.github.aedev.flow.providers.Provider
 import io.github.aedev.flow.providers.ProviderRegistry
 
 sealed class ProviderRoute(val route: String) {
+    object UnifiedHome : ProviderRoute("unified_home")
     object ProviderList : ProviderRoute("providers")
     object VideoList : ProviderRoute("videos/{providerValue}") {
         fun createRoute(providerValue: String) = "videos/$providerValue"
@@ -28,8 +29,16 @@ fun ProviderNavHost(
 ) {
     NavHost(
         navController = navController,
-        startDestination = ProviderRoute.ProviderList.route
+        startDestination = ProviderRoute.UnifiedHome.route
     ) {
+        composable(ProviderRoute.UnifiedHome.route) {
+            UnifiedHomeScreen(
+                onVideoClick = { item ->
+                    onPlayVideo(item.post.link)
+                }
+            )
+        }
+        
         composable(ProviderRoute.ProviderList.route) {
             ProviderListScreen(
                 onProviderClick = { provider ->
