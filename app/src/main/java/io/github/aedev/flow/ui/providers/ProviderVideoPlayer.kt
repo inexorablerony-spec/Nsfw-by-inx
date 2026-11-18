@@ -9,12 +9,13 @@ import io.github.aedev.flow.data.model.Video
 import io.github.aedev.flow.player.EnhancedPlayerManager
 import io.github.aedev.flow.player.GlobalPlayerState
 import io.github.aedev.flow.providers.Provider
+import io.github.aedev.flow.providers.ProviderCatalogueItem
+import io.github.aedev.flow.providers.ProviderRegistry
 import kotlinx.coroutines.CancellationException
 
 @Composable
 fun ProviderVideoPlayer(
-    provider: Provider,
-    videoLink: String,
+    item: ProviderCatalogueItem,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -27,13 +28,19 @@ fun ProviderVideoPlayer(
         isLoading = true
         error = null
         try {
-            val streams = provider.getStream(videoLink)
+            val provider = ProviderRegistry.getByValue(item.providerId)
+            if (provider == null) {
+                error = "Provider not found"
+                isLoading = false
+                return@LaunchedEffect
+            }
+            val streams = provider.getStream(item.post.link)
             if (streams.isNotEmpty()) {
                 val stream = streams.first()
                 
                 val video = Video(
                     id = videoLink,
-                    title = "Provider Video",
+                    title = item.post.title,
                     channelName = provider.name,
                     channelId = provider.value,
                     thumbnailUrl = "",
@@ -44,7 +51,7 @@ fun ProviderVideoPlayer(
                 
                 playerManager.playExternalStream(
                     context = context,
-                    videoId = videoLink,
+                    videoId = item.post.link,
                     url = stream.link,
                     headers = stream.headers
                 )
