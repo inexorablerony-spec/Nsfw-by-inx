@@ -25,7 +25,7 @@ fun ProviderListScreen(
         )
         
         LazyColumn {
-            items(providers) { provider ->
+            items(providers, key = { it.value }) { provider ->
                 ProviderItem(
                     provider = provider,
                     onClick = { onProviderClick(provider) }
@@ -63,6 +63,13 @@ fun ProviderItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            Switch(
+                checked = isEnabled,
+                onCheckedChange = { enabled ->
+                    isEnabled = enabled
+                    ProviderRegistry.setEnabled(provider.value, enabled)
+                }
+            )
         }
     }
 }
