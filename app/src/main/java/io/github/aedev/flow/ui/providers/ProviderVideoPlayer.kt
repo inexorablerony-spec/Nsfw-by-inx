@@ -48,7 +48,7 @@ fun ProviderVideoPlayer(
                     title = item.post.title,
                     channelName = provider.name,
                     channelId = provider.value,
-                    thumbnailUrl = "",
+                    thumbnailUrl = item.post.image,
                     duration = 0,
                     viewCount = 0,
                     uploadDate = ""
@@ -75,6 +75,9 @@ fun ProviderVideoPlayer(
     }
     
     Column(modifier = Modifier.fillMaxSize()) {
+        Button(onClick = onBack) {
+            Text("Back")
+        }
         if (isLoading) {
             CircularProgressIndicator()
         } else if (error != null) {
