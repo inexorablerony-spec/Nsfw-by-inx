@@ -1,6 +1,7 @@
 package io.github.aedev.flow.webview
 
 import android.annotation.SuppressLint
+import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.webkit.*
@@ -8,7 +9,6 @@ import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONTokener
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 
 data class MediaCandidate(
@@ -39,9 +39,8 @@ class WebViewExtractor(private val context: android.content.Context) {
         private const val EXTRACTION_TIMEOUT_MS = 20000L
         private const val OBSERVATION_PERIOD_MS = 8000L
         private const val POLL_INTERVAL_MS = 500L
+        private val mainHandler = Handler(Looper.getMainLooper())
     }
-    
-    private val sessionCounter = AtomicLong(0)
     
     @SuppressLint("SetJavaScriptEnabled")
     suspend fun extractMedia(url: String): ExtractionResult = withContext(Dispatchers.Main) {
@@ -61,12 +60,14 @@ class WebViewExtractor(private val context: android.content.Context) {
     @SuppressLint("SetJavaScriptEnabled")
     private suspend fun extractMediaInternal(url: String): ExtractionResult = suspendCancellableCoroutine { continuation ->
         val completed = AtomicBoolean(false)
-        val session = sessionCounter.incrementAndGet()
+        val observationStarted = AtomicBoolean(false)
+        val polling = AtomicBoolean(false)
         val webView = WebView(context)
         val candidates = mutableMapOf<String, MediaCandidate>()
         
         fun complete(result: ExtractionResult) {
             if (!completed.compareAndSet(false, true)) return
+            polling.set(false)
             destroyWebViewSafely(webView)
             if (continuation.isActive) {
                 continuation.resume(result)
@@ -75,6 +76,7 @@ class WebViewExtractor(private val context: android.content.Context) {
         
         continuation.invokeOnCancellation {
             if (completed.compareAndSet(false, true)) {
+                polling.set(false)
                 destroyWebViewSafely(webView)
             }
         }
@@ -87,17 +89,17 @@ class WebViewExtractor(private val context: android.content.Context) {
             
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, pageUrl: String?) {
-                    if (!isCurrentSession(session) || completed.get()) return
+                    if (completed.get()) return
+                    if (!observationStarted.compareAndSet(false, true)) return
+                    
                     injectObserver(view ?: return)
-                    startObservation(view, url, session, candidates) { result ->
-                        if (isCurrentSession(session)) {
-                            complete(result)
-                        }
+                    startObservation(view, url, polling, candidates) { result ->
+                        complete(result)
                     }
                 }
                 
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-                    if (request?.isForMainFrame == true && isCurrentSession(session) && !completed.get()) {
+                    if (request?.isForMainFrame == true && !completed.get()) {
                         complete(ExtractionResult.Error("Page load failed", ExtractionResult.ErrorType.PAGE_LOAD_FAILED))
                     }
                 }
@@ -107,10 +109,8 @@ class WebViewExtractor(private val context: android.content.Context) {
         webView.loadUrl(url)
     }
     
-    private fun isCurrentSession(session: Long): Boolean = session == sessionCounter.get()
-    
     private fun destroyWebViewSafely(webView: WebView) {
-        val cleanup = {
+        val cleanup = Runnable {
             try {
                 webView.stopLoading()
                 webView.webViewClient = WebViewClient()
@@ -121,9 +121,9 @@ class WebViewExtractor(private val context: android.content.Context) {
         }
         
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            cleanup()
+            cleanup.run()
         } else {
-            webView.post { cleanup() }
+            mainHandler.post(cleanup)
         }
     }
     
@@ -190,15 +190,15 @@ class WebViewExtractor(private val context: android.content.Context) {
     private fun startObservation(
         webView: WebView,
         sourcePage: String,
-        session: Long,
+        polling: AtomicBoolean,
         candidates: MutableMap<String, MediaCandidate>,
         onComplete: (ExtractionResult) -> Unit
     ) {
+        polling.set(true)
         val deadline = SystemClock.elapsedRealtime() + OBSERVATION_PERIOD_MS
-        val polling = AtomicBoolean(true)
         
         fun poll() {
-            if (!polling.get() || !isCurrentSession(session)) return
+            if (!polling.get()) return
             
             if (SystemClock.elapsedRealtime() >= deadline) {
                 polling.set(false)
@@ -212,18 +212,18 @@ class WebViewExtractor(private val context: android.content.Context) {
             }
             
             webView.evaluateJavascript("JSON.stringify(window.__flowMediaCandidates || [])") { result ->
-                if (!isCurrentSession(session)) return@evaluateJavascript
+                if (!polling.get()) return@evaluateJavascript
                 
                 val newCandidates = parseJsonResult(result, sourcePage)
                 newCandidates.forEach { candidate ->
                     candidates[candidate.url] = candidate
                 }
                 
-                webView.postDelayed({ poll() }, POLL_INTERVAL_MS)
+                mainHandler.postDelayed({ poll() }, POLL_INTERVAL_MS)
             }
         }
         
-        webView.postDelayed({ poll() }, POLL_INTERVAL_MS)
+        mainHandler.postDelayed({ poll() }, POLL_INTERVAL_MS)
     }
     
     private fun parseJsonResult(result: String?, sourcePage: String): List<MediaCandidate> {
