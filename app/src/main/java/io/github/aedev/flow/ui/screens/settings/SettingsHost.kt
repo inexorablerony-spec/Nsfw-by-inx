@@ -171,6 +171,7 @@ fun SettingsHost(
                                     onBack = if (twoPane && stack.size <= 1) null else ::back,
                                     onNavigate = ::push,
                                     onOpenRecap = onOpenRecap,
+                                    onOpenProviderCatalogue = onOpenProviderCatalogue,
                                     options = options,
                                 )
                             }
