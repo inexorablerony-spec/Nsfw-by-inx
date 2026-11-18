@@ -31,13 +31,6 @@ fun ProviderListScreen(
                     onClick = { onProviderClick(provider) }
                 )
             }
-            Switch(
-                checked = isEnabled,
-                onCheckedChange = { enabled ->
-                    isEnabled = enabled
-                    ProviderRegistry.setEnabled(provider.value, enabled)
-                }
-            )
         }
     }
 }
@@ -70,13 +63,6 @@ fun ProviderItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Switch(
-                checked = isEnabled,
-                onCheckedChange = { enabled ->
-                    isEnabled = enabled
-                    ProviderRegistry.setEnabled(provider.value, enabled)
-                }
-            )
         }
     }
 }
