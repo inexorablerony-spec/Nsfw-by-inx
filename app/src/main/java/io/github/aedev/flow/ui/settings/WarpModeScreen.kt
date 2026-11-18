@@ -14,8 +14,8 @@ import kotlinx.coroutines.launch
 fun WarpModeScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var state by remember { mutableStateOf(WarpProxyManager.getState()) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val state by WarpProxyManager.state.collectAsState()
+    val errorMessage by WarpProxyManager.errorMessage.collectAsState()
     
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
@@ -61,14 +61,9 @@ fun WarpModeScreen() {
                         onCheckedChange = { enabled ->
                             scope.launch {
                                 if (enabled) {
-                                    val success = WarpProxyManager.start(context)
-                                    state = WarpProxyManager.getState()
-                                    if (!success) {
-                                        errorMessage = WarpProxyManager.getErrorMessage()
-                                    }
+                                    WarpProxyManager.start(context)
                                 } else {
                                     WarpProxyManager.stop()
-                                    state = WarpProxyManager.getState()
                                 }
                             }
                         },
@@ -88,7 +83,7 @@ fun WarpModeScreen() {
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 Text(
-                    text = "This is an app-level proxy, not a system VPN. Other apps are not protected. Requires libusque.so native binary.",
+                    text = "This is an app-level proxy, not a system VPN. Connection is verified against Cloudflare before showing CONNECTED. Requires libusque.so.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
