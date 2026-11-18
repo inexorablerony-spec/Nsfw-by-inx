@@ -12,11 +12,13 @@ import io.github.aedev.flow.network.WarpManager
 @Composable
 fun WarpModeScreen() {
     val context = LocalContext.current
-    var warpEnabled by remember { mutableStateOf(WarpManager.isWarpEnabled()) }
+    var warpPreferred by remember { mutableStateOf(false) }
+    var isInstalled by remember { mutableStateOf(false) }
     
     LaunchedEffect(Unit) {
         WarpManager.init(context)
-        warpEnabled = WarpManager.isWarpEnabled()
+        warpPreferred = WarpManager.isWarpPreferred()
+        isInstalled = WarpManager.isWarpAppInstalled(context)
     }
     
     Column(modifier = Modifier.fillMaxSize()) {
@@ -31,37 +33,48 @@ fun WarpModeScreen() {
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Cloudflare WARP",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    text = "Bypass ISP restrictions with Cloudflare WARP",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                if (!isInstalled) {
                     Text(
-                        text = "WARP Mode",
-                        style = MaterialTheme.typography.titleMedium
+                        text = "The official 1.1.1.1 app is required for WARP.",
+                        style = MaterialTheme.typography.bodyMedium
                     )
-                    Text(
-                        text = "Bypass ISP restrictions with Cloudflare WARP VPN",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = warpEnabled,
-                    onCheckedChange = { enabled ->
-                        warpEnabled = enabled
-                        WarpManager.setWarpEnabled(enabled)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = { WarpManager.openPlayStore(context) }) {
+                        Text("Install 1.1.1.1 App")
                     }
+                } else {
+                    Text(
+                        text = "1.1.1.1 app is installed.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = { WarpManager.openWarpApp(context) }) {
+                        Text("Open 1.1.1.1 App")
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Text(
+                    text = "Note: Cloudflare does not provide an embeddable SDK. WARP must be used through the official 1.1.1.1 app.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        }
-        
-        if (warpEnabled) {
-            Text(
-                text = "WARP Mode is enabled. Traffic will be routed through Cloudflare.",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(16.dp)
-            )
         }
     }
 }
