@@ -8,6 +8,8 @@ import kotlinx.coroutines.withContext
 class WebViewProvider(private val context: Context) : Provider {
     override val name = "WebView"
     override val value = "webview"
+    override val version = "1.0"
+    override val description = "WebView extractor for JavaScript-rendered sites"
     override val icon = ""
     
     private val extractor = WebViewExtractor(context)

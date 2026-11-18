@@ -7,6 +7,8 @@ import java.net.URL
 class EpornerProvider : Provider {
     override val name = "Eporner"
     override val value = "eporner"
+    override val version = "1.0"
+    override val description = "Eporner video provider"
     override val icon = "https://www.eporner.com/favicon.ico"
     
     private val baseUrl = "https://www.eporner.com"

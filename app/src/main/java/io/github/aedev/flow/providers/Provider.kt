@@ -34,13 +34,26 @@ data class DirectLink(
     val type: String
 )
 
+data class ProviderInfo(
+    val name: String,
+    val value: String,
+    val version: String,
+    val description: String,
+    val icon: String,
+    val enabled: Boolean
+)
+
 interface Provider {
     val name: String
     val value: String
+    val version: String
+    val description: String
     val icon: String
     
     suspend fun getPosts(page: Int = 1): List<Post>
     suspend fun getSearchPosts(query: String, page: Int = 1): List<Post>
     suspend fun getMeta(link: String): Info
     suspend fun getStream(link: String): List<Stream>
+    
+    fun getInfo(enabled: Boolean): ProviderInfo = ProviderInfo(name, value, version, description, icon, enabled)
 }
