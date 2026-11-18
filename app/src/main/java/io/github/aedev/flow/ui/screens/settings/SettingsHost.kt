@@ -53,6 +53,7 @@ fun SettingsHost(
     onOpenDonations: () -> Unit,
     onOpenRecap: () -> Unit,
     onOpenUpdate: () -> Unit,
+    onOpenProviderCatalogue: () -> Unit = {},
     options: SettingsHostOptions = SettingsHostOptions(),
 ) {
     val navigator = rememberListDetailPaneScaffoldNavigator<String>(scaffoldDirective = rememberFlowPaneScaffoldDirective())
