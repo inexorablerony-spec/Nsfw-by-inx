@@ -7,7 +7,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import io.github.aedev.flow.providers.Provider
 import io.github.aedev.flow.providers.Stream
@@ -34,10 +36,24 @@ fun ProviderVideoPlayer(
             try {
                 streams = provider.getStream(videoLink)
                 if (streams.isNotEmpty()) {
-                    val mediaItem = MediaItem.fromUri(streams.first().link)
-                    exoPlayer.setMediaItem(mediaItem)
-                    exoPlayer.prepare()
-                    exoPlayer.playWhenReady = true
+                    val stream = streams.first()
+                    val dataSourceFactory = DefaultHttpDataSource.Factory()
+                        .setUserAgent(stream.headers["User-Agent"] ?: "Mozilla/5.0")
+                        .setDefaultRequestProperties(stream.headers.filterKeys { it != "User-Agent" })
+                    
+                    val mediaSourceFactory = DefaultMediaSourceFactory(context)
+                        .setDataSourceFactory(dataSourceFactory)
+                    
+                    val player = ExoPlayer.Builder(context)
+                        .setMediaSourceFactory(mediaSourceFactory)
+                        .build()
+                    
+                    val mediaItem = MediaItem.fromUri(stream.link)
+                    player.setMediaItem(mediaItem)
+                    player.prepare()
+                    player.playWhenReady = true
+                    
+                    exoPlayer.release()
                 } else {
                     error = "No streams found"
                 }
