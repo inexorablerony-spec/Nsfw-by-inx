@@ -5,11 +5,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.ui.PlayerView
+import io.github.aedev.flow.player.EnhancedPlayerManager
 import io.github.aedev.flow.providers.Provider
-import io.github.aedev.flow.providers.ProviderPlaybackManager
-import io.github.aedev.flow.providers.ProviderPlaybackRequest
 import kotlinx.coroutines.launch
 
 @Composable
@@ -23,20 +20,20 @@ fun ProviderVideoPlayer(
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     
+    val playerManager = remember { EnhancedPlayerManager.getInstance() }
+    
     LaunchedEffect(videoLink) {
         scope.launch {
             try {
                 val streams = provider.getStream(videoLink)
                 if (streams.isNotEmpty()) {
                     val stream = streams.first()
-                    val request = ProviderPlaybackRequest(
+                    playerManager.playExternalStream(
+                        videoId = videoLink,
+                        title = "Provider Video",
                         url = stream.link,
-                        userAgent = stream.headers["User-Agent"],
-                        referer = stream.headers["Referer"],
-                        cookie = stream.headers["Cookie"],
                         headers = stream.headers
                     )
-                    ProviderPlaybackManager.play(context, request)
                 } else {
                     error = "No streams found"
                 }
@@ -47,28 +44,13 @@ fun ProviderVideoPlayer(
         }
     }
     
-    DisposableEffect(Unit) {
-        onDispose {
-            scope.launch {
-                ProviderPlaybackManager.release()
-            }
-        }
-    }
-    
     Column(modifier = Modifier.fillMaxSize()) {
         if (isLoading) {
             CircularProgressIndicator()
         } else if (error != null) {
             Text("Error: $error")
         } else {
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        player = ProviderPlaybackManager.getPlayer()
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
+            Text("Playing in Flow player")
         }
     }
 }
